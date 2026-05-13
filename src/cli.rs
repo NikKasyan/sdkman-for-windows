@@ -55,7 +55,10 @@ pub enum Command {
     Flush {
         target: Option<FlushTarget>,
     },
-    Config,
+    Config {
+        #[command(subcommand)]
+        action: Option<ConfigAction>,
+    },
     Version,
 }
 
@@ -78,4 +81,9 @@ pub enum FlushTarget {
     Tmp,
     Metadata,
     All,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigAction {
+    Set { key: String, value: String },
 }

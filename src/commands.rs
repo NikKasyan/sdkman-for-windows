@@ -12,7 +12,7 @@ use tempfile::TempDir;
 use crate::{
     api::Api,
     archive,
-    cli::{Args, Command, EnvAction, FlushTarget, OfflineAction},
+    cli::{Args, Command, ConfigAction, EnvAction, FlushTarget, OfflineAction},
     config::Config,
     envfile, fslink, shims,
     state::{session_home_var, InstallRecord, State},
@@ -47,7 +47,7 @@ pub fn execute(args: Args, state: State) -> Result<()> {
         Command::Offline { action } => offline(&state, action),
         Command::Update => update(&state),
         Command::Flush { target } => flush(&state, target.unwrap_or(FlushTarget::All)),
-        Command::Config => config(&state),
+        Command::Config { action } => config(&state, action),
         Command::Version => version(),
     }
 }
@@ -415,10 +415,20 @@ fn flush(state: &State, target: FlushTarget) -> Result<()> {
     Ok(())
 }
 
-fn config(state: &State) -> Result<()> {
+fn config(state: &State, action: Option<ConfigAction>) -> Result<()> {
     state.init()?;
-    println!("Config: {}", state.config_path().display());
-    print!("{}", state.config.to_properties());
+    match action {
+        Some(ConfigAction::Set { key, value }) => {
+            let mut cfg = state.config.clone();
+            cfg.set_key(&key, &value)?;
+            cfg.write(&state.config_path())?;
+            println!("{key}={value}");
+        }
+        None => {
+            println!("Config: {}", state.config_path().display());
+            print!("{}", state.config.to_properties());
+        }
+    }
     Ok(())
 }
 

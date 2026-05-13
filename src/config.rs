@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs, path::Path};
 
@@ -91,6 +91,22 @@ impl Config {
             self.offline_mode
         )
     }
+
+    pub fn set_key(&mut self, key: &str, value: &str) -> Result<()> {
+        match key {
+            "sdkman_auto_answer" => self.auto_answer = parse_bool(key, value)?,
+            "sdkman_insecure_ssl" => self.insecure_ssl = parse_bool(key, value)?,
+            "sdkman_curl_connect_timeout" => self.curl_connect_timeout = parse_int(key, value)?,
+            "sdkman_curl_max_time" => self.curl_max_time = parse_int(key, value)?,
+            "sdkman_colour_enable" => self.colour_enable = parse_bool(key, value)?,
+            "sdkman_debug_mode" => self.debug_mode = parse_bool(key, value)?,
+            "sdkman_healthcheck_enable" => self.healthcheck_enable = parse_bool(key, value)?,
+            "sdkman_auto_env" => self.auto_env = parse_bool(key, value)?,
+            "sdkman_offline_mode" => self.offline_mode = parse_bool(key, value)?,
+            _ => bail!("unknown config key: {key}"),
+        }
+        Ok(())
+    }
 }
 
 fn bool_key(values: &BTreeMap<String, String>, key: &str, default: bool) -> bool {
@@ -105,6 +121,20 @@ fn int_key(values: &BTreeMap<String, String>, key: &str, default: u64) -> u64 {
         .get(key)
         .and_then(|v| v.parse().ok())
         .unwrap_or(default)
+}
+
+fn parse_bool(key: &str, value: &str) -> Result<bool> {
+    match value {
+        value if value.eq_ignore_ascii_case("true") => Ok(true),
+        value if value.eq_ignore_ascii_case("false") => Ok(false),
+        _ => bail!("{key} expects true or false"),
+    }
+}
+
+fn parse_int(key: &str, value: &str) -> Result<u64> {
+    value
+        .parse()
+        .map_err(|_| anyhow::anyhow!("{key} expects a non-negative integer"))
 }
 
 #[cfg(test)]

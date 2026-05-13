@@ -60,6 +60,88 @@ fn config_prints_custom_values() {
         .stdout(predicates::str::contains("sdkman_offline_mode=true"));
 }
 
+#[test]
+fn config_set_updates_boolean_value() {
+    let temp = TempDir::new().unwrap();
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .args(["config", "set", "sdkman_auto_answer", "true"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("sdkman_auto_answer=true"));
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .arg("config")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("sdkman_auto_answer=true"));
+}
+
+#[test]
+fn config_set_updates_integer_value() {
+    let temp = TempDir::new().unwrap();
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .args(["config", "set", "sdkman_curl_max_time", "12"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("sdkman_curl_max_time=12"));
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .arg("config")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("sdkman_curl_max_time=12"));
+}
+
+#[test]
+fn config_set_rejects_unknown_key() {
+    let temp = TempDir::new().unwrap();
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .args(["config", "set", "sdkman_missing", "true"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "unknown config key: sdkman_missing",
+        ));
+}
+
+#[test]
+fn config_set_rejects_invalid_value() {
+    let temp = TempDir::new().unwrap();
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .args(["config", "set", "sdkman_auto_answer", "yes"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "sdkman_auto_answer expects true or false",
+        ));
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .args(["config", "set", "sdkman_curl_max_time", "slow"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "sdkman_curl_max_time expects a non-negative integer",
+        ));
+}
+
 #[cfg(windows)]
 fn create_fake_sdk(command_name: &str) -> TempDir {
     let sdk_home = TempDir::new().unwrap();

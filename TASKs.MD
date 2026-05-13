@@ -104,6 +104,8 @@ Verification:
 
 ### TASK-006: Add a focused config set command
 
+Status: Done.
+
 Problem: users cannot update config through the CLI.
 
 Work:
