@@ -438,6 +438,8 @@ Verification:
 
 ### TASK-028: Validate `.sdkmanrc` entries
 
+Status: Done.
+
 Problem: `.sdkmanrc` parser accepts any `key=value` pair without validation.
 
 Work:
