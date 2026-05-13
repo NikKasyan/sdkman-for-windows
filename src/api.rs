@@ -96,8 +96,9 @@ impl Api {
     }
 
     pub fn download_url(&self, candidate: &str, version: &str) -> String {
+        let platform = download_platform(candidate);
         format!(
-            "{}/broker/download/{candidate}/{version}/windows",
+            "{}/broker/download/{candidate}/{version}/{platform}",
             self.base
         )
     }
@@ -131,6 +132,14 @@ fn version_urls(base: &str, candidate: &str) -> Vec<String> {
         format!("{base}/candidates/{candidate}/windows/versions/all"),
         format!("{base}/candidates/{candidate}/win/versions/all"),
     ]
+}
+
+fn download_platform(candidate: &str) -> &'static str {
+    if candidate.eq_ignore_ascii_case("java") {
+        "windowsx64"
+    } else {
+        "windows"
+    }
 }
 
 fn parse_candidates(text: &str) -> Vec<Candidate> {
@@ -356,6 +365,17 @@ mod tests {
             urls[0],
             "https://api.sdkman.io/2/candidates/java/windowsx64/versions/list?installed="
         );
+    }
+
+    #[test]
+    fn java_downloads_use_windows_x64_platform() {
+        assert_eq!(download_platform("java"), "windowsx64");
+        assert_eq!(download_platform("JAVA"), "windowsx64");
+    }
+
+    #[test]
+    fn non_java_downloads_keep_windows_platform() {
+        assert_eq!(download_platform("maven"), "windows");
     }
 
     #[test]

@@ -163,14 +163,28 @@ impl State {
         if let Some(version) = version {
             return Ok(self.install_record(candidate, version)?.map(|r| r.path));
         }
-        if let Some(session) = env::var_os(session_home_var(candidate)) {
-            return Ok(Some(PathBuf::from(session)));
-        }
+
+        let sdkman_session_home = env::var_os(session_home_var(candidate)).map(PathBuf::from);
+        let conventional_home = conventional_home(candidate);
+        let env_home = sdkman_session_home.clone().or(conventional_home);
         let link = self.current_link(candidate);
-        if link.exists() {
-            return Ok(Some(resolve_linkish(&link)));
+        let current_home = link.exists().then(|| resolve_linkish(&link));
+
+        if sdkman_session_home.is_some() {
+            return Ok(env_home);
         }
-        Ok(None)
+
+        if let Some(current_home) = current_home {
+            if current_link_wins_path(self, &current_home, env_home.as_deref()) {
+                return Ok(Some(current_home));
+            }
+            if let Some(env_home) = env_home {
+                return Ok(Some(env_home));
+            }
+            return Ok(Some(current_home));
+        }
+
+        Ok(env_home)
     }
 }
 
@@ -179,6 +193,59 @@ pub fn session_home_var(candidate: &str) -> String {
         "SDKMAN_{}_HOME",
         candidate.to_ascii_uppercase().replace('-', "_")
     )
+}
+
+fn conventional_home_var(candidate: &str) -> Option<String> {
+    let candidate = candidate.trim();
+    if candidate.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{}_HOME",
+        candidate.to_ascii_uppercase().replace('-', "_")
+    ))
+}
+
+fn conventional_home(candidate: &str) -> Option<PathBuf> {
+    if let Some(home_var) = conventional_home_var(candidate) {
+        if let Some(session) = env::var_os(home_var) {
+            return Some(PathBuf::from(session));
+        }
+    }
+    None
+}
+
+fn current_link_wins_path(state: &State, current_home: &Path, env_home: Option<&Path>) -> bool {
+    let Some(env_home) = env_home else {
+        return true;
+    };
+    let Some(current_rank) =
+        path_rank(&state.shims_dir()).or_else(|| path_rank(&current_home.join("bin")))
+    else {
+        return false;
+    };
+    let env_rank = path_rank(&env_home.join("bin")).unwrap_or(usize::MAX);
+    current_rank <= env_rank
+}
+
+fn path_rank(path: &Path) -> Option<usize> {
+    env::var_os("PATH")
+        .map(|path_value| {
+            env::split_paths(&path_value)
+                .enumerate()
+                .find_map(|(index, entry)| paths_match(&entry, path).then_some(index))
+        })
+        .unwrap_or(None)
+}
+
+fn paths_match(left: &Path, right: &Path) -> bool {
+    if left == right {
+        return true;
+    }
+    match (fs::canonicalize(left), fs::canonicalize(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
 }
 
 pub fn display_path(path: &Path) -> String {
@@ -222,5 +289,139 @@ mod tests {
             strip_windows_verbatim_prefix(r"C:\Users\example\.sdkman-windows"),
             r"C:\Users\example\.sdkman-windows"
         );
+    }
+
+    #[test]
+    fn conventional_home_var_uses_candidate_home_name() {
+        assert_eq!(conventional_home_var("java").as_deref(), Some("JAVA_HOME"));
+        assert_eq!(
+            conventional_home_var("springboot").as_deref(),
+            Some("SPRINGBOOT_HOME")
+        );
+        assert_eq!(
+            conventional_home_var("visualvm").as_deref(),
+            Some("VISUALVM_HOME")
+        );
+    }
+
+    #[test]
+    fn active_home_falls_back_to_conventional_home_variable() {
+        let root = tempfile::TempDir::new().unwrap();
+        let home = root.path().join("sample-home");
+        let state = State {
+            root: root.path().join("sdkman"),
+            config: Config::default(),
+        };
+
+        env::remove_var("SDKMAN_SAMPLE_HOME");
+        env::set_var("SAMPLE_HOME", &home);
+        let active = state.active_home("sample", None).unwrap();
+        env::remove_var("SAMPLE_HOME");
+
+        assert_eq!(active, Some(home));
+    }
+
+    #[test]
+    fn active_home_prefers_sdkman_session_home_over_conventional_home() {
+        let root = tempfile::TempDir::new().unwrap();
+        let conventional = root.path().join("conventional-home");
+        let sdkman = root.path().join("sdkman-home");
+        let state = State {
+            root: root.path().join("sdkman"),
+            config: Config::default(),
+        };
+
+        env::set_var("SAMPLE_HOME", &conventional);
+        env::set_var("SDKMAN_SAMPLE_HOME", &sdkman);
+        let active = state.active_home("sample", None).unwrap();
+        env::remove_var("SAMPLE_HOME");
+        env::remove_var("SDKMAN_SAMPLE_HOME");
+
+        assert_eq!(active, Some(sdkman));
+    }
+
+    #[test]
+    fn active_home_prefers_sdkman_session_home_even_when_shims_win_path() {
+        let root = tempfile::TempDir::new().unwrap();
+        let state = State {
+            root: root.path().join("sdkman"),
+            config: Config::default(),
+        };
+        let current = state.current_link("sample");
+        let session_home = root.path().join("session-home");
+        fs::create_dir_all(&current).unwrap();
+        fs::create_dir_all(state.shims_dir()).unwrap();
+        let previous_path = env::var_os("PATH");
+
+        env::set_var("PATH", state.shims_dir());
+        env::remove_var("SAMPLE_HOME");
+        env::set_var("SDKMAN_SAMPLE_HOME", &session_home);
+        let active = state.active_home("sample", None).unwrap();
+        env::remove_var("SDKMAN_SAMPLE_HOME");
+        restore_path(previous_path);
+
+        assert_eq!(active, Some(session_home));
+    }
+
+    #[test]
+    fn active_home_prefers_current_link_when_shims_win_path() {
+        let root = tempfile::TempDir::new().unwrap();
+        let state = State {
+            root: root.path().join("sdkman"),
+            config: Config::default(),
+        };
+        let current = state.current_link("sample");
+        let stale_home = root.path().join("stale-home");
+        fs::create_dir_all(&current).unwrap();
+        fs::create_dir_all(stale_home.join("bin")).unwrap();
+        fs::create_dir_all(state.shims_dir()).unwrap();
+        let previous_path = env::var_os("PATH");
+
+        env::set_var(
+            "PATH",
+            env::join_paths([state.shims_dir(), stale_home.join("bin")]).unwrap(),
+        );
+        env::set_var("SAMPLE_HOME", &stale_home);
+        env::remove_var("SDKMAN_SAMPLE_HOME");
+        let active = state.active_home("sample", None).unwrap();
+        env::remove_var("SAMPLE_HOME");
+        restore_path(previous_path);
+
+        assert!(paths_match(&active.unwrap(), &current));
+    }
+
+    #[test]
+    fn active_home_prefers_env_home_when_env_bin_wins_path() {
+        let root = tempfile::TempDir::new().unwrap();
+        let state = State {
+            root: root.path().join("sdkman"),
+            config: Config::default(),
+        };
+        let current = state.current_link("sample");
+        let session_home = root.path().join("session-home");
+        fs::create_dir_all(&current).unwrap();
+        fs::create_dir_all(session_home.join("bin")).unwrap();
+        fs::create_dir_all(state.shims_dir()).unwrap();
+        let previous_path = env::var_os("PATH");
+
+        env::set_var(
+            "PATH",
+            env::join_paths([session_home.join("bin"), state.shims_dir()]).unwrap(),
+        );
+        env::set_var("SAMPLE_HOME", &session_home);
+        env::remove_var("SDKMAN_SAMPLE_HOME");
+        let active = state.active_home("sample", None).unwrap();
+        env::remove_var("SAMPLE_HOME");
+        restore_path(previous_path);
+
+        assert!(paths_match(&active.unwrap(), &session_home));
+    }
+
+    fn restore_path(previous_path: Option<std::ffi::OsString>) {
+        if let Some(previous_path) = previous_path {
+            env::set_var("PATH", previous_path);
+        } else {
+            env::remove_var("PATH");
+        }
     }
 }

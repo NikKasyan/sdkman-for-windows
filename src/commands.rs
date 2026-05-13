@@ -225,7 +225,17 @@ fn installed_version_is_current(
     let Some(record) = state.install_record(candidate, version)? else {
         return Ok(false);
     };
-    Ok(record.path == current)
+    Ok(paths_match(&record.path, current))
+}
+
+fn paths_match(left: &Path, right: &Path) -> bool {
+    if left == right {
+        return true;
+    }
+    match (fs::canonicalize(left), fs::canonicalize(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
 }
 
 fn install(
@@ -320,7 +330,7 @@ fn uninstall(state: &State, candidate: &str, version: &str) -> Result<()> {
         println!("Uninstalled {candidate} {version}.");
     }
     let current = state.current_link(candidate);
-    if current.exists() && fs::canonicalize(&current).ok() == fs::canonicalize(&record.path).ok() {
+    if current.exists() && paths_match(&current, &record.path) {
         fslink::remove_linkish(&current).ok();
     }
     shims::regenerate(state)?;
@@ -539,4 +549,22 @@ fn version() -> Result<()> {
     println!("SDKMAN for Windows");
     println!("native: {}", env!("CARGO_PKG_VERSION"));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn paths_match_after_canonicalization() {
+        let root = TempDir::new().unwrap();
+        let nested = root.path().join("a").join("b");
+        fs::create_dir_all(&nested).unwrap();
+
+        let direct = root.path().join("a").join("b");
+        let parent_relative = root.path().join("a").join("..").join("a").join("b");
+
+        assert!(paths_match(&direct, &parent_relative));
+    }
 }
