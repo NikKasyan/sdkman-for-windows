@@ -104,6 +104,9 @@ fn init(state: &State) -> Result<()> {
 
 fn list(state: &State, candidate: Option<String>) -> Result<()> {
     state.init()?;
+    if let Some(ref candidate) = candidate {
+        ensure_candidate_exists(state, candidate)?;
+    }
     match candidate {
         None => {
             let api = Api::new(state)?;
@@ -264,6 +267,7 @@ fn install(
     local_path: Option<PathBuf>,
 ) -> Result<()> {
     state.init()?;
+    ensure_candidate_exists(state, candidate)?;
     if local_path.is_none() && state.config.offline_mode {
         bail!("install requires network while offline mode is enabled");
     }
@@ -354,6 +358,30 @@ fn version_matches_prefix(version: &Version, prefix: &str) -> bool {
             .display_version
             .as_deref()
             .is_some_and(|display| display.starts_with(prefix))
+}
+
+fn ensure_candidate_exists(state: &State, candidate: &str) -> Result<()> {
+    // Prefer installed candidates (works in offline mode too)
+    let installed = state.installed_candidates()?;
+    if installed.iter().any(|c| c.eq_ignore_ascii_case(candidate)) {
+        return Ok(());
+    }
+
+    // If offline, we can't query remote metadata
+    if state.config.offline_mode {
+        bail!("Unknown candidate: {}", candidate);
+    }
+
+    let api = Api::new(state)?;
+    let remote = api.candidates(state.config.offline_mode)?;
+    if remote
+        .iter()
+        .any(|c| c.name.eq_ignore_ascii_case(candidate))
+    {
+        Ok(())
+    } else {
+        bail!("Unknown candidate: {}", candidate);
+    }
 }
 
 fn select_version(
@@ -625,6 +653,7 @@ fn should_set_default(config: &Config) -> Result<bool> {
 
 fn uninstall(state: &State, candidate: &str, version: Option<String>) -> Result<()> {
     state.init()?;
+    ensure_candidate_exists(state, candidate)?;
     let version = resolve_installed_version(state, candidate, version.as_deref())?;
     let record = state
         .install_record(candidate, &version)?
@@ -655,6 +684,7 @@ fn use_version(
     emit: EmitMode,
 ) -> Result<()> {
     state.init()?;
+    ensure_candidate_exists(state, candidate)?;
     let version = resolve_installed_version(state, candidate, version.as_deref())?;
     let record = state
         .install_record(candidate, &version)?
@@ -723,6 +753,7 @@ fn resolve_installed_version(
 
 fn default_version(state: &State, candidate: &str, version: Option<String>) -> Result<()> {
     state.init()?;
+    ensure_candidate_exists(state, candidate)?;
     let version = resolve_installed_version(state, candidate, version.as_deref())?;
     let record = state
         .install_record(candidate, &version)?
@@ -736,6 +767,7 @@ fn default_version(state: &State, candidate: &str, version: Option<String>) -> R
 fn current(state: &State, candidate: Option<String>) -> Result<()> {
     state.init()?;
     if let Some(candidate) = candidate {
+        ensure_candidate_exists(state, &candidate)?;
         match state.active_home(&candidate, None)? {
             Some(home) => println!("Using {candidate} at {}", display_path(&home)),
             None => println!("No {candidate} version is currently in use."),
@@ -753,6 +785,7 @@ fn current(state: &State, candidate: Option<String>) -> Result<()> {
 
 fn home(state: &State, candidate: &str, version: Option<String>) -> Result<()> {
     state.init()?;
+    ensure_candidate_exists(state, candidate)?;
     let home = state
         .active_home(candidate, version.as_deref())?
         .context("version is not installed or active")?;
