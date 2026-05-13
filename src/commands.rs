@@ -503,9 +503,15 @@ fn select_version_interactive(
     sort_versions_by_vendor_and_version(&mut versions_vec, order);
 
     let mut selected = 0usize;
+    let mut last_drawn_selected = usize::MAX;
+    let mut last_drawn_order = order;
 
     loop {
-        draw_version_picker(&mut out, &context, &versions_vec, selected, order)?;
+        if selected != last_drawn_selected || order != last_drawn_order {
+            draw_version_picker(&mut out, &context, &versions_vec, selected, order)?;
+            last_drawn_selected = selected;
+            last_drawn_order = order;
+        }
         if let Event::Key(key) = event::read()? {
             if key.kind != KeyEventKind::Press {
                 continue;
@@ -558,6 +564,8 @@ fn select_version_interactive(
                     } else {
                         selected = 0;
                     }
+                    // force a redraw on next loop
+                    last_drawn_selected = usize::MAX;
                 }
                 _ => {}
             }

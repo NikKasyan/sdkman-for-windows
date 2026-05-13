@@ -215,7 +215,7 @@ pub enum FlushTarget {
     All,
 }
 
-#[derive(Clone, Copy, Debug, ValueEnum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum Order {
     #[value(help = "Ascending order (lowest first)")]
     Asc,
