@@ -7,7 +7,12 @@ if (!(Test-Path $exe)) {
     throw "sdk.exe not found at $exe"
 }
 
-if ($args.Count -gt 0 -and ($args[0] -eq "use" -or $args[0] -eq "env")) {
+if (
+    $args.Count -gt 0 -and (
+        $args[0] -eq "use" -or
+        ($args[0] -eq "env" -and $args.Count -gt 1 -and $args[1] -eq "install")
+    )
+) {
     $json = & $exe "--emit-env" @args
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE

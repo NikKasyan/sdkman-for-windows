@@ -13,7 +13,7 @@ if /I "%1"=="use" (
   exit /b %ERRORLEVEL%
 )
 
-if /I "%1"=="env" (
+if /I "%1"=="env" if /I "%2"=="install" (
   for /f "delims=" %%L in ('"%SDK_EXE%" --emit-cmd %*') do %%L
   exit /b %ERRORLEVEL%
 )
