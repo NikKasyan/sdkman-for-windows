@@ -1,7 +1,7 @@
 use assert_cmd::Command;
-use std::path::Path;
 #[cfg(windows)]
-use std::{fs, process::Command as ProcessCommand};
+use std::process::Command as ProcessCommand;
+use std::{fs, path::Path};
 use tempfile::TempDir;
 
 #[test]
@@ -21,6 +21,43 @@ fn init_creates_layout() {
     assert!(temp.path().join("candidates").exists());
     assert!(temp.path().join("etc").join("config").exists());
     assert!(temp.path().join("shims").exists());
+}
+
+#[test]
+fn config_prints_default_values() {
+    let temp = TempDir::new().unwrap();
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .arg("config")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Config:"))
+        .stdout(predicates::str::contains("sdkman_auto_answer=false"))
+        .stdout(predicates::str::contains("sdkman_curl_max_time=60"))
+        .stdout(predicates::str::contains("sdkman_offline_mode=false"));
+}
+
+#[test]
+fn config_prints_custom_values() {
+    let temp = TempDir::new().unwrap();
+    let config_dir = temp.path().join("etc");
+    fs::create_dir_all(&config_dir).unwrap();
+    fs::write(
+        config_dir.join("config"),
+        "sdkman_auto_answer=true\nsdkman_curl_max_time=9\nsdkman_offline_mode=true\n",
+    )
+    .unwrap();
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .arg("config")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("sdkman_auto_answer=true"))
+        .stdout(predicates::str::contains("sdkman_curl_max_time=9"))
+        .stdout(predicates::str::contains("sdkman_offline_mode=true"));
 }
 
 #[cfg(windows)]

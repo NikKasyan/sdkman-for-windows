@@ -417,7 +417,8 @@ fn flush(state: &State, target: FlushTarget) -> Result<()> {
 
 fn config(state: &State) -> Result<()> {
     state.init()?;
-    println!("{}", state.config_path().display());
+    println!("Config: {}", state.config_path().display());
+    print!("{}", state.config.to_properties());
     Ok(())
 }
 

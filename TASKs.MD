@@ -87,6 +87,8 @@ Verification:
 
 ### TASK-005: Add a real `sdk config` display command
 
+Status: Done.
+
 Problem: `sdk config` currently prints only the config file path.
 
 Work:
