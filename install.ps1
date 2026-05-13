@@ -5,6 +5,7 @@ param(
     [string]$PathScope = "User",
     [switch]$SkipProfileUpdate,
     [switch]$SkipLocalSdkDiscovery
+    ,[switch]$UnblockScripts
 )
 
 $ErrorActionPreference = "Stop"
@@ -291,6 +292,47 @@ Copy-Item -Force "$PSScriptRoot\scripts\sdk.cmd" (Join-Path $scriptDir "sdk.cmd"
 $managedEntries = @($scriptDir, $shimDir, $binDir)
 Copy-Item -Force "$PSScriptRoot\scripts\sdk-completion.ps1" (Join-Path $scriptDir "sdk-completion.ps1")
 Set-SdkmanPathEntries -Scope $PathScope -ManagedEntries $managedEntries
+
+# Optionally unblock downloaded script files so they can be executed without an
+# extra user action. This is gated behind the -UnblockScripts switch or an
+# interactive prompt. If skipped, we print instructions the user can run later.
+function Do-UnblockScripts {
+    param([string]$Dir)
+
+    $files = @(
+        (Join-Path $Dir "sdk.ps1"),
+        (Join-Path $Dir "sdk.cmd"),
+        (Join-Path $Dir "sdk-completion.ps1")
+    )
+
+    foreach ($f in $files) {
+        if (Test-Path -LiteralPath $f) {
+            try {
+                Unblock-File -LiteralPath $f -ErrorAction Stop
+            } catch {
+                Write-Warning ("Failed to unblock {0}: {1}" -f $f, $_.Exception.Message)
+            }
+        }
+    }
+}
+
+if ($UnblockScripts) {
+    Do-UnblockScripts -Dir $scriptDir
+    Write-Host "Unblocked installer scripts in $scriptDir"
+} else {
+    if ($Host.UI.RawUI.KeyAvailable -or $PSBoundParameters.ContainsKey('UnblockScripts')) {
+        # If running non-interactively we skip prompting; fall through to info below.
+    } else {
+        $answer = Read-Host "Unblock installed scripts in $scriptDir so they can be executed? [y/N]"
+        if ($answer -and $answer.Trim().ToLower() -eq 'y') {
+            Do-UnblockScripts -Dir $scriptDir
+            Write-Host "Unblocked installer scripts in $scriptDir"
+        } else {
+            Write-Host "Scripts were left blocked. To allow execution later run:`n  Unblock-File -LiteralPath '$scriptDir\sdk.ps1'" -ForegroundColor Yellow
+            Write-Host "Or unblock all provided scripts:`n  Unblock-File -LiteralPath '$scriptDir\*'" -ForegroundColor Yellow
+        }
+    }
+}
 
 $previousSdkmanWindowsDir = $env:SDKMAN_WINDOWS_DIR
 try {
