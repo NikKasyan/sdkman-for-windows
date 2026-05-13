@@ -3,10 +3,10 @@ use clap::CommandFactory;
 use reqwest::blocking::Client;
 use serde::Serialize;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     env, fs,
     io::{self, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 use tempfile::TempDir;
 
@@ -103,32 +103,66 @@ fn list(state: &State, candidate: Option<String>) -> Result<()> {
             if state.config.offline_mode {
                 println!("Offline Mode: only showing installed {candidate} versions");
                 for version in installed {
-                    let home = state.version_dir(&candidate, &version);
-                    let marker = if Some(home) == current { ">" } else { " " };
-                    println!("{marker} * {version}");
+                    print_list_version(state, &candidate, &version, true, current.as_deref())?;
                 }
                 return Ok(());
             }
             let api = Api::new(state)?;
             println!("Available {candidate} Versions");
-            for version in api.versions(&candidate, false)? {
-                let installed_marker = if installed.contains(&version.value) {
-                    "*"
-                } else {
-                    " "
-                };
-                let current_marker = if state.version_dir(&candidate, &version.value)
-                    == current.clone().unwrap_or_default()
-                {
-                    ">"
-                } else {
-                    " "
-                };
-                println!("{current_marker} {installed_marker} {}", version.value);
+            let remote_versions = api.versions(&candidate, false)?;
+            let mut printed = BTreeSet::new();
+            for version in remote_versions {
+                let installed_marker = installed.contains(&version.value);
+                print_list_version(
+                    state,
+                    &candidate,
+                    &version.value,
+                    installed_marker,
+                    current.as_deref(),
+                )?;
+                printed.insert(version.value);
+            }
+            for version in installed {
+                if printed.insert(version.clone()) {
+                    print_list_version(state, &candidate, &version, true, current.as_deref())?;
+                }
             }
         }
     }
     Ok(())
+}
+
+fn print_list_version(
+    state: &State,
+    candidate: &str,
+    version: &str,
+    installed: bool,
+    current: Option<&Path>,
+) -> Result<()> {
+    let installed_marker = if installed { "*" } else { " " };
+    let current_marker =
+        if installed && installed_version_is_current(state, candidate, version, current)? {
+            ">"
+        } else {
+            " "
+        };
+    println!("{current_marker} {installed_marker} {version}");
+    Ok(())
+}
+
+fn installed_version_is_current(
+    state: &State,
+    candidate: &str,
+    version: &str,
+    current: Option<&Path>,
+) -> Result<bool> {
+    let Some(current) = current else {
+        return Ok(false);
+    };
+    let Some(record) = state.install_record(candidate, version)? else {
+        return Ok(false);
+    };
+    Ok(record.path == current)
 }
 
 fn install(

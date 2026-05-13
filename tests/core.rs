@@ -258,6 +258,21 @@ fn local_install_default_shim_and_uninstall_workflow() {
         ))
         .stdout(predicates::str::contains("Junction created").not());
 
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .args(["offline", "enable"])
+        .assert()
+        .success();
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .args(["list", "sample"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("> * 1.0-local"));
+
     let shim = sdkman_home.path().join("shims").join("sample.cmd");
     assert!(shim.exists());
 
