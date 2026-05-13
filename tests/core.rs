@@ -1,4 +1,5 @@
 use assert_cmd::Command;
+use predicates::prelude::PredicateBooleanExt;
 #[cfg(windows)]
 use std::process::Command as ProcessCommand;
 use std::{fs, path::Path};
@@ -22,10 +23,7 @@ fn no_args_prints_clap_help() {
         .success()
         .stdout(predicates::str::contains("SDKMAN for native Windows"))
         .stdout(predicates::str::contains("Usage: sdk"))
-        .stdout(predicates::str::contains("Examples:"))
-        .stdout(predicates::str::contains(
-            "sdk config set sdkman_auto_answer true",
-        ));
+        .stdout(predicates::str::contains("Examples:").not());
 }
 
 #[test]
@@ -65,6 +63,21 @@ fn help_prints_command_specific_help() {
         .stdout(predicates::str::contains(
             "sdk config set sdkman_offline_mode false",
         ));
+}
+
+#[test]
+fn invalid_command_usage_prints_error_and_examples() {
+    let temp = TempDir::new().unwrap();
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .arg("install")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("required").or(predicates::str::contains("missing")))
+        .stderr(predicates::str::contains("Stop!").not())
+        .stderr(predicates::str::contains("Examples:"))
+        .stderr(predicates::str::contains("sdk install java 21.0.4-tem"));
 }
 
 #[test]
