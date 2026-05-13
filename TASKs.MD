@@ -173,6 +173,8 @@ Verification:
 
 ### TASK-010: Improve `sdk install` archive handling
 
+Status: Done.
+
 Problem: downloads are always saved as `.zip`, even though extraction supports `.tar`, `.tar.gz`, and `.tgz`.
 
 Work:
@@ -221,6 +223,8 @@ Verification:
 ## SDKMAN Compatibility Tasks
 
 ### TASK-013: Add command alias coverage
+
+Status: Done.
 
 Problem: only `uninstall` has the `rm` alias.
 
@@ -276,6 +280,21 @@ Verification:
 
 ## API And Network Tasks
 
+### TASK-018: Make API base URL overrideable for tests
+
+Status: Done.
+
+Problem: `Api` hardcodes `https://api.sdkman.io/2`, making integration tests awkward.
+
+Work:
+- Added `SDKMAN_API` environment variable override in `Api::new()`.
+- Production default is unchanged.
+
+Verification:
+- Test default base URL behavior.
+- Test override base URL behavior using a mock server.
+- Run the full verification block.
+
 ### TASK-017: Mock SDKMAN API calls in tests
 
 Problem: network behavior is not covered and should not hit the real API in tests.
@@ -322,6 +341,8 @@ Verification:
 
 ### TASK-020: Add better network error messages
 
+Status: Done.
+
 Problem: network failures currently bubble up with low-level context.
 
 Work:
@@ -338,6 +359,8 @@ Verification:
 
 ### TASK-021: Add archive extraction tests
 
+Status: Done.
+
 Problem: extraction logic supports several formats but has no direct tests.
 
 Work:
@@ -352,6 +375,8 @@ Verification:
 - Run the full verification block.
 
 ### TASK-022: Test zip slip protection
+
+Status: Done.
 
 Problem: zip extraction uses `enclosed_name`, but this safety behavior should be locked down.
 
@@ -478,6 +503,8 @@ Verification:
 
 ### TASK-030: Add auto-env support for PowerShell
 
+Status: Done.
+
 Problem: `sdkman_auto_env` exists but does not do anything.
 
 Work:
@@ -552,6 +579,8 @@ Verification:
 
 ### TASK-035: Add CI for format, tests, and clippy
 
+Status: Done.
+
 Problem: verification is manual.
 
 Work:
@@ -566,6 +595,8 @@ Verification:
 - Run the full verification block locally.
 
 ### TASK-036: Add release build workflow
+
+Status: Done.
 
 Problem: there is no repeatable binary release process.
 
@@ -646,6 +677,8 @@ Verification:
 - Run the full verification block.
 
 ### TASK-041: Add failure cleanup tests
+
+Status: Done.
 
 Problem: failed installs can leave partial directories or archives.
 

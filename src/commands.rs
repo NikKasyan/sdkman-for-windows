@@ -188,7 +188,7 @@ fn sort_versions_by_vendor_and_version(versions: &mut [Version], order: Order) {
             .filter(|p| !p.is_empty())
             .map(|p| p.parse::<i64>().unwrap_or(0))
             .collect::<Vec<_>>();
-        let major = *nums.get(0).unwrap_or(&0);
+        let major = *nums.first().unwrap_or(&0);
         let minor = *nums.get(1).unwrap_or(&0);
         let patch = *nums.get(2).unwrap_or(&0);
         (major, minor, patch, suffix)
@@ -346,16 +346,30 @@ fn install(
     } else {
         let api = Api::new(state)?;
         let client = Client::builder().build()?;
-        let archive_name = format!("{candidate}-{version}.zip");
-        let archive_path = state.archives_dir().join(archive_name);
+        let base_name = format!("{candidate}-{version}");
         println!("Downloading: {candidate} {version}");
         let urls = api.download_url(candidate, &version);
-        archive::download_with_fallback(&client, &urls, &archive_path)?;
+        let archive_path =
+            archive::download_with_fallback(&client, &urls, &state.archives_dir(), &base_name)
+                .with_context(|| format!("failed to download {candidate} {version}"))?;
         let tmp = TempDir::new_in(state.tmp_dir())?;
         println!("Installing: {candidate} {version}");
-        let normalized = archive::extract(&archive_path, tmp.path())?;
+        let extract_result = archive::extract(&archive_path, tmp.path());
+        let normalized = match extract_result {
+            Ok(path) => path,
+            Err(e) => {
+                let _ = fs::remove_file(&archive_path);
+                return Err(e).with_context(|| format!("failed to extract {candidate} {version}"));
+            }
+        };
         let final_dir = state.version_dir(candidate, &version);
-        archive::move_normalized(&normalized, &final_dir)?;
+        if let Err(e) = archive::move_normalized(&normalized, &final_dir) {
+            let _ = fs::remove_file(&archive_path);
+            if final_dir.exists() {
+                let _ = fs::remove_dir_all(&final_dir);
+            }
+            return Err(e);
+        }
         state.write_record(&InstallRecord {
             candidate: candidate.to_string(),
             version: version.clone(),
@@ -537,12 +551,12 @@ fn select_version_interactive(
                 KeyCode::Esc | KeyCode::Char('q') => {
                     bail!("selection cancelled");
                 }
-                KeyCode::Char(c) if c.is_digit(10) => {
+                KeyCode::Char(c) if c.is_ascii_digit() => {
                     // Map 1-9 to visible rows
                     let viewport = picker_page_size().min(versions_vec.len());
                     let offset = picker_offset(selected, versions_vec.len(), viewport);
                     let digit = c.to_digit(10).unwrap();
-                    if digit >= 1 && digit <= 9 {
+                    if (1..=9).contains(&digit) {
                         let idx = offset + (digit as usize) - 1;
                         if idx < versions_vec.len() {
                             selected = idx;
@@ -990,7 +1004,9 @@ fn update(state: &State) -> Result<()> {
     if state.config.offline_mode {
         bail!("update requires network while offline mode is enabled");
     }
-    Api::new(state)?.refresh()?;
+    Api::new(state)?
+        .refresh()
+        .context("failed to refresh candidate metadata")?;
     println!("Candidate metadata refreshed.");
     Ok(())
 }
@@ -1050,11 +1066,11 @@ fn completions(state: &State, words: &[String]) -> Vec<String> {
 
     let current = words.last().map(String::as_str).unwrap_or_default();
     match command {
-        "install" => complete_install(state, words, current),
-        "use" | "default" | "uninstall" | "rm" | "home" => {
+        "install" | "i" => complete_install(state, words, current),
+        "use" | "default" | "d" | "uninstall" | "rm" | "home" | "h" => {
             complete_installed_version_command(state, words, current)
         }
-        "list" | "current" => complete_candidate(state, current, false),
+        "list" | "ls" | "current" | "c" => complete_candidate(state, current, false),
         "flush" => matching(&["archives", "tmp", "metadata", "all"], current),
         "offline" => matching(&["enable", "disable"], current),
         "env" => matching(&["init", "install", "clear"], current),
@@ -1169,13 +1185,18 @@ fn version() -> Result<()> {
 const COMMANDS: &[&str] = &[
     "init",
     "list",
+    "ls",
     "install",
+    "i",
     "uninstall",
     "rm",
     "use",
     "default",
+    "d",
     "current",
+    "c",
     "home",
+    "h",
     "env",
     "offline",
     "update",

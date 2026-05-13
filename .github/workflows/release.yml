@@ -51,6 +51,7 @@ jobs:
           Copy-Item -LiteralPath "scripts\sdk.ps1" -Destination (Join-Path $staging "scripts")
           Copy-Item -LiteralPath "scripts\sdk.cmd" -Destination (Join-Path $staging "scripts")
           Copy-Item -LiteralPath "scripts\sdk-completion.ps1" -Destination (Join-Path $staging "scripts")
+          Copy-Item -LiteralPath "scripts\sdk-auto-env.ps1" -Destination (Join-Path $staging "scripts")
 
           $zip = Join-Path $PWD "dist\$packageName.zip"
           Compress-Archive -Path (Join-Path $staging "*") -DestinationPath $zip -Force

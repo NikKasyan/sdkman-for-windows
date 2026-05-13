@@ -338,8 +338,9 @@ New-Item -ItemType Directory -Force -Path $binDir, $shimDir, $scriptDir, (Join-P
 Copy-Item -Force $SdkExe (Join-Path $binDir "sdk.exe")
 Copy-Item -Force "$PSScriptRoot\scripts\sdk.ps1" (Join-Path $scriptDir "sdk.ps1")
 Copy-Item -Force "$PSScriptRoot\scripts\sdk.cmd" (Join-Path $scriptDir "sdk.cmd")
-$managedEntries = @($scriptDir, $shimDir, $binDir)
 Copy-Item -Force "$PSScriptRoot\scripts\sdk-completion.ps1" (Join-Path $scriptDir "sdk-completion.ps1")
+Copy-Item -Force "$PSScriptRoot\scripts\sdk-auto-env.ps1" (Join-Path $scriptDir "sdk-auto-env.ps1")
+$managedEntries = @($scriptDir, $shimDir, $binDir)
 Set-SdkmanPathEntries -Scope $PathScope -ManagedEntries $managedEntries
 
 # Optionally unblock downloaded script files so they can be executed without an
@@ -351,7 +352,8 @@ function Do-UnblockScripts {
     $files = @(
         (Join-Path $Dir "sdk.ps1"),
         (Join-Path $Dir "sdk.cmd"),
-        (Join-Path $Dir "sdk-completion.ps1")
+        (Join-Path $Dir "sdk-completion.ps1"),
+        (Join-Path $Dir "sdk-auto-env.ps1")
     )
 
     foreach ($f in $files) {

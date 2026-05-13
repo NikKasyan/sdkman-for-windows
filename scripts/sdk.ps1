@@ -18,6 +18,17 @@ if ((Test-Path $completion) -and !(Get-Command Register-SdkmanWindowsCompletion 
     . $completion
 }
 
+$autoEnvScript = Join-Path $root "scripts\sdk-auto-env.ps1"
+$autoEnvConfig = Join-Path $root "etc\config"
+if (
+    (Test-Path $autoEnvScript) -and
+    (Test-Path $autoEnvConfig) -and
+    (Get-Content $autoEnvConfig -Raw -ErrorAction SilentlyContinue) -match '(?m)^\s*sdkman_auto_env\s*=\s*true\s*$' -and
+    !(Get-Command _Sdk-ApplyEnvIfPresent -ErrorAction SilentlyContinue)
+) {
+    . $autoEnvScript
+}
+
 if ($SdkArgs.Count -ge 2 -and $SdkArgs[0] -eq "completion" -and $SdkArgs[1] -eq "status") {
     if (Get-Command Register-SdkmanWindowsCompletion -ErrorAction SilentlyContinue) {
         Write-Host "SDKMAN for Windows completion is loaded for this PowerShell session."

@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use reqwest::blocking::Client;
 use std::{fs, path::PathBuf, time::Duration};
 
@@ -53,9 +53,11 @@ impl Api {
             .timeout(Duration::from_secs(state.config.curl_max_time))
             .user_agent("sdkman-windows/0.1")
             .build()?;
+        let base =
+            std::env::var("SDKMAN_API").unwrap_or_else(|_| "https://api.sdkman.io/2".to_string());
         Ok(Self {
             client,
-            base: "https://api.sdkman.io/2".to_string(),
+            base,
             cache: state.metadata_dir(),
         })
     }
@@ -76,10 +78,11 @@ impl Api {
             return Ok(parse_versions(&text));
         }
 
+        let mut last_err: Option<anyhow::Error> = None;
         for url in urls {
             match self
                 .client
-                .get(url)
+                .get(&url)
                 .send()
                 .and_then(|r| r.error_for_status())
             {
@@ -89,10 +92,13 @@ impl Api {
                     fs::write(&path, &text)?;
                     return Ok(parse_versions(&text));
                 }
-                Err(_) => continue,
+                Err(e) => {
+                    last_err = Some(anyhow::anyhow!("{url}: {e}"));
+                }
             }
         }
-        bail!("could not fetch versions for {candidate}")
+        Err(last_err.unwrap_or_else(|| anyhow::anyhow!("no URLs to try")))
+            .with_context(|| format!("failed to fetch versions for {candidate}"))
     }
 
     pub fn download_url(&self, candidate: &str, version: &str) -> Vec<String> {
@@ -113,7 +119,13 @@ impl Api {
             return fs::read_to_string(path)
                 .context("metadata cache is unavailable in offline mode");
         }
-        let text = self.client.get(url).send()?.error_for_status()?.text()?;
+        let text = self
+            .client
+            .get(url)
+            .send()
+            .and_then(|r| r.error_for_status())
+            .and_then(|r| r.text())
+            .with_context(|| format!("failed to fetch {url}"))?;
         fs::create_dir_all(&self.cache)?;
         fs::write(path, &text)?;
         Ok(text)
@@ -132,14 +144,6 @@ fn version_urls(base: &str, candidate: &str) -> Vec<String> {
         format!("{base}/candidates/{candidate}/windows/versions/all"),
         format!("{base}/candidates/{candidate}/win/versions/all"),
     ]
-}
-
-fn download_platform(candidate: &str) -> &'static str {
-    if candidate.eq_ignore_ascii_case("java") {
-        "windowsx64"
-    } else {
-        "windows"
-    }
 }
 
 fn download_platforms(candidate: &str) -> Vec<&'static str> {
@@ -376,14 +380,17 @@ mod tests {
     }
 
     #[test]
-    fn java_downloads_use_windows_x64_platform() {
-        assert_eq!(download_platform("java"), "windowsx64");
-        assert_eq!(download_platform("JAVA"), "windowsx64");
+    fn java_downloads_use_windows_x64_platform_first() {
+        let platforms = download_platforms("java");
+        assert_eq!(platforms[0], "windowsx64");
+        let platforms = download_platforms("JAVA");
+        assert_eq!(platforms[0], "windowsx64");
     }
 
     #[test]
-    fn non_java_downloads_keep_windows_platform() {
-        assert_eq!(download_platform("maven"), "windows");
+    fn non_java_downloads_keep_windows_platform_first() {
+        let platforms = download_platforms("maven");
+        assert_eq!(platforms[0], "windows");
     }
 
     #[test]
