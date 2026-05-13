@@ -1,4 +1,5 @@
 use assert_cmd::Command;
+use std::path::Path;
 #[cfg(windows)]
 use std::{fs, process::Command as ProcessCommand};
 use tempfile::TempDir;
@@ -23,30 +24,36 @@ fn init_creates_layout() {
 }
 
 #[cfg(windows)]
-#[test]
-fn local_install_default_shim_and_uninstall_workflow() {
-    let sdkman_home = TempDir::new().unwrap();
+fn create_fake_sdk(command_name: &str) -> TempDir {
     let sdk_home = TempDir::new().unwrap();
     let sdk_bin = sdk_home.path().join("bin");
     fs::create_dir_all(&sdk_bin).unwrap();
     fs::write(
-        sdk_bin.join("sample.cmd"),
+        sdk_bin.join(format!("{command_name}.cmd")),
         "@echo off\r\necho local-sdk:%1:%2\r\n",
     )
     .unwrap();
+    sdk_home
+}
 
+#[cfg(windows)]
+fn register_local_sdk(sdkman_home: &Path, candidate: &str, version: &str, sdk_home: &Path) {
     Command::cargo_bin("sdk")
         .unwrap()
-        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
-        .args([
-            "install",
-            "sample",
-            "1.0-local",
-            sdk_home.path().to_str().unwrap(),
-        ])
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home)
+        .args(["install", candidate, version, sdk_home.to_str().unwrap()])
         .write_stdin("n\n")
         .assert()
         .success();
+}
+
+#[cfg(windows)]
+#[test]
+fn local_install_default_shim_and_uninstall_workflow() {
+    let sdkman_home = TempDir::new().unwrap();
+    let sdk_home = create_fake_sdk("sample");
+
+    register_local_sdk(sdkman_home.path(), "sample", "1.0-local", sdk_home.path());
 
     Command::cargo_bin("sdk")
         .unwrap()
@@ -105,4 +112,69 @@ fn local_install_default_shim_and_uninstall_workflow() {
         .join("sample")
         .join("current")
         .exists());
+}
+
+#[cfg(windows)]
+#[test]
+fn sdkmanrc_env_install_emits_powershell_json_and_cmd_commands() {
+    let sdkman_home = TempDir::new().unwrap();
+    let work = TempDir::new().unwrap();
+    let sdk_home = create_fake_sdk("java");
+    register_local_sdk(sdkman_home.path(), "java", "21-local", sdk_home.path());
+    fs::write(work.path().join(".sdkmanrc"), "java=21-local\n").unwrap();
+
+    let powershell_output = Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .current_dir(work.path())
+        .args(["--emit-env", "env", "install"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let update: serde_json::Value = serde_json::from_slice(&powershell_output).unwrap();
+    let sdk_home = fs::canonicalize(sdk_home.path()).unwrap();
+    let sdk_home_text = sdk_home.display().to_string();
+    let sdk_bin_text = sdk_home.join("bin").display().to_string();
+
+    assert_eq!(update["set"]["JAVA_HOME"], sdk_home_text);
+    assert_eq!(update["set"]["SDKMAN_JAVA_HOME"], sdk_home_text);
+    assert_eq!(update["prepend_path"][0], sdk_bin_text);
+    assert_eq!(update["message"], "Applied .sdkmanrc");
+
+    let cmd_output = Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .current_dir(work.path())
+        .args(["--emit-cmd", "env", "install"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let cmd_text = String::from_utf8_lossy(&cmd_output);
+    assert!(cmd_text.contains(&format!("set \"JAVA_HOME={sdk_home_text}\"")));
+    assert!(cmd_text.contains(&format!("set \"SDKMAN_JAVA_HOME={sdk_home_text}\"")));
+    assert!(cmd_text.contains(&format!("set \"PATH={sdk_bin_text};%PATH%\"")));
+    assert!(cmd_text.contains("echo Applied .sdkmanrc"));
+}
+
+#[cfg(windows)]
+#[test]
+fn sdkmanrc_env_install_fails_when_version_is_missing() {
+    let sdkman_home = TempDir::new().unwrap();
+    let work = TempDir::new().unwrap();
+    fs::write(work.path().join(".sdkmanrc"), "java=missing-local\n").unwrap();
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .current_dir(work.path())
+        .args(["--emit-env", "env", "install"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "java missing-local is not installed",
+        ));
 }

@@ -605,6 +605,8 @@ Verification:
 
 ### TASK-040: Add end-to-end `.sdkmanrc` workflow test
 
+Status: Done.
+
 Problem: `.sdkmanrc` workflow spans parser, install records, emit mode, and wrappers.
 
 Work:
