@@ -175,7 +175,8 @@ impl Progress {
     fn render(&self, current: u64) -> String {
         match (self.unit, self.total) {
             (ProgressUnit::Bytes, Some(total)) if total > 0 => format!(
-                "{:>6.1}% ({:.1}/{:.1} MB)",
+                "{} {:>6.1}% ({:.1}/{:.1} MB)",
+                progress_bar(current, total),
                 current as f64 * 100.0 / total as f64,
                 bytes_to_mb(current),
                 bytes_to_mb(total)
@@ -192,6 +193,39 @@ impl Progress {
     }
 }
 
+fn progress_bar(current: u64, total: u64) -> String {
+    const WIDTH: u64 = 28;
+    if total == 0 {
+        return "[----------------------------]".to_string();
+    }
+    let filled = ((current.min(total) * WIDTH) + total / 2) / total;
+    let mut bar = String::with_capacity((WIDTH + 2) as usize);
+    bar.push('[');
+    for index in 0..WIDTH {
+        if index < filled {
+            bar.push('=');
+        } else if index == filled && filled < WIDTH {
+            bar.push('>');
+        } else {
+            bar.push('-');
+        }
+    }
+    bar.push(']');
+    bar
+}
+
 fn bytes_to_mb(bytes: u64) -> f64 {
     bytes as f64 / 1024.0 / 1024.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn progress_bar_renders_start_middle_and_end() {
+        assert_eq!(progress_bar(0, 100), "[>---------------------------]");
+        assert_eq!(progress_bar(50, 100), "[==============>-------------]");
+        assert_eq!(progress_bar(100, 100), "[============================]");
+    }
 }

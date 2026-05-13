@@ -393,7 +393,12 @@ fn sdkmanrc_env_install_emits_powershell_json_and_cmd_commands() {
         .get_output()
         .stdout
         .clone();
-    let update: serde_json::Value = serde_json::from_slice(&powershell_output).unwrap();
+    let powershell_text = String::from_utf8_lossy(&powershell_output);
+    let json = powershell_text
+        .lines()
+        .find_map(|line| line.strip_prefix("__SDKMAN_ENV_JSON__"))
+        .unwrap();
+    let update: serde_json::Value = serde_json::from_str(json).unwrap();
     let sdk_home = fs::canonicalize(sdk_home.path()).unwrap();
     let sdk_home_text = sdk_home.display().to_string();
     let sdk_bin_text = sdk_home.join("bin").display().to_string();

@@ -34,6 +34,8 @@ struct EnvUpdate {
     message: String,
 }
 
+const ENV_JSON_PREFIX: &str = "__SDKMAN_ENV_JSON__";
+
 pub fn execute(args: Args, state: State) -> Result<()> {
     let emit = EmitMode::from_args(args.emit_env, args.emit_cmd);
     let Some(command) = args.command else {
@@ -316,7 +318,7 @@ fn select_install_version(state: &State, candidate: &str) -> Result<String> {
     if state.config.auto_answer {
         return Ok(versions[0].value.clone());
     }
-    select_version(candidate, "all", &versions)
+    select_version(state, candidate, "all", &versions)
 }
 
 fn resolve_install_version(state: &State, candidate: &str, requested: &str) -> Result<String> {
@@ -334,7 +336,7 @@ fn resolve_install_version(state: &State, candidate: &str, requested: &str) -> R
         0 => bail!("no {candidate} version matches '{requested}'"),
         1 => Ok(matches[0].value.clone()),
         _ if state.config.auto_answer => Ok(matches[0].value.clone()),
-        _ => select_version(candidate, requested, &matches),
+        _ => select_version(state, candidate, requested, &matches),
     }
 }
 
@@ -346,9 +348,14 @@ fn version_matches_prefix(version: &Version, prefix: &str) -> bool {
             .is_some_and(|display| display.starts_with(prefix))
 }
 
-fn select_version(candidate: &str, requested: &str, versions: &[Version]) -> Result<String> {
-    if io::stdout().is_terminal() && io::stdin().is_terminal() {
-        return select_version_interactive(candidate, requested, versions);
+fn select_version(
+    state: &State,
+    candidate: &str,
+    requested: &str,
+    versions: &[Version],
+) -> Result<String> {
+    if io::stderr().is_terminal() && io::stdin().is_terminal() {
+        return select_version_interactive(state, candidate, requested, versions);
     }
 
     println!("Multiple {candidate} versions match '{requested}'");
@@ -384,17 +391,30 @@ fn select_version(candidate: &str, requested: &str, versions: &[Version]) -> Res
 }
 
 fn select_version_interactive(
+    state: &State,
     candidate: &str,
     requested: &str,
     versions: &[Version],
 ) -> Result<String> {
-    let mut out = io::stdout();
+    let mut out = io::stderr();
     let _guard = TerminalMode::enter()?;
     drain_pending_events()?;
+    let current = state.active_home(candidate, None).ok().flatten();
+    let installed = state
+        .installed_versions(candidate)
+        .map(|versions| versions.into_iter().collect::<BTreeSet<_>>())
+        .unwrap_or_default();
+    let context = PickerContext {
+        state,
+        candidate,
+        requested,
+        current: current.as_deref(),
+        installed: &installed,
+    };
     let mut selected = 0usize;
 
     loop {
-        draw_version_picker(&mut out, candidate, requested, versions, selected)?;
+        draw_version_picker(&mut out, &context, versions, selected)?;
         if let Event::Key(key) = event::read()? {
             if key.kind != KeyEventKind::Press {
                 continue;
@@ -405,6 +425,12 @@ fn select_version_interactive(
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
                     selected = (selected + 1).min(versions.len() - 1);
+                }
+                KeyCode::PageUp => {
+                    selected = selected.saturating_sub(picker_page_size());
+                }
+                KeyCode::PageDown => {
+                    selected = (selected + picker_page_size()).min(versions.len() - 1);
                 }
                 KeyCode::Home => selected = 0,
                 KeyCode::End => selected = versions.len() - 1,
@@ -427,13 +453,23 @@ fn drain_pending_events() -> Result<()> {
     Ok(())
 }
 
+struct PickerContext<'a> {
+    state: &'a State,
+    candidate: &'a str,
+    requested: &'a str,
+    current: Option<&'a Path>,
+    installed: &'a BTreeSet<String>,
+}
+
 fn draw_version_picker(
-    out: &mut io::Stdout,
-    candidate: &str,
-    requested: &str,
+    out: &mut impl Write,
+    context: &PickerContext<'_>,
     versions: &[Version],
     selected: usize,
 ) -> Result<()> {
+    let viewport = picker_page_size().min(versions.len());
+    let offset = picker_offset(selected, versions.len(), viewport);
+    let end = (offset + viewport).min(versions.len());
     execute!(
         out,
         cursor::MoveTo(0, 0),
@@ -442,12 +478,19 @@ fn draw_version_picker(
         Print(" SDKMAN for Windows\n"),
         Print(" ==================\n\n"),
         Print(format!(
-            " Select {candidate} version matching '{requested}'\n\n"
+            " Select {} version matching '{}'\n\n",
+            context.candidate, context.requested
         )),
-        Print(format!("   {:<18} {:<10} Vendor\n", "Identifier", "Dist")),
-        Print(format!("   {}\n", "-".repeat(54)))
+        Print(format!(
+            "   {:<2} {:<18} {:<10} {:<18} \n",
+            "", "Identifier", "Dist", "Status"
+        )),
+        Print(format!("   {}\n", "-".repeat(58)))
     )?;
-    for (index, version) in versions.iter().enumerate() {
+    for (row, index) in (offset..end).enumerate() {
+        let version = &versions[index];
+        let scrollbar = scrollbar_glyph(row, viewport, offset, versions.len());
+        let status = picker_status(context, version)?;
         if index == selected {
             execute!(out, SetAttribute(Attribute::Reverse), Print(" > "))?;
         } else {
@@ -456,10 +499,12 @@ fn draw_version_picker(
         execute!(
             out,
             Print(format!(
-                "{:<18} {:<10} {}\n",
+                "{:<2} {:<18} {:<10} {:<18} {}\n",
+                if status.is_current { "*" } else { "" },
                 version.value,
                 version.distribution.as_deref().unwrap_or(""),
-                version.vendor.as_deref().unwrap_or("")
+                status.label,
+                scrollbar
             ))
         )?;
         if index == selected {
@@ -468,10 +513,78 @@ fn draw_version_picker(
     }
     execute!(
         out,
-        Print("\n Up/Down to move, Enter to select, Esc/q to cancel.")
+        Print(format!(
+            "\n Showing {}-{} of {}. Up/Down, PgUp/PgDn, Enter, Esc/q.",
+            offset + 1,
+            end,
+            versions.len()
+        ))
     )?;
     out.flush()?;
     Ok(())
+}
+
+struct PickerStatus {
+    label: String,
+    is_current: bool,
+}
+
+fn picker_status(context: &PickerContext<'_>, version: &Version) -> Result<PickerStatus> {
+    if installed_version_is_current(
+        context.state,
+        context.candidate,
+        &version.value,
+        context.current,
+    )? {
+        return Ok(PickerStatus {
+            label: "current".to_string(),
+            is_current: true,
+        });
+    }
+    if context.installed.contains(&version.value) {
+        return Ok(PickerStatus {
+            label: "installed".to_string(),
+            is_current: false,
+        });
+    }
+    Ok(PickerStatus {
+        label: version.vendor.clone().unwrap_or_default(),
+        is_current: false,
+    })
+}
+
+fn picker_page_size() -> usize {
+    let height = terminal::size()
+        .map(|(_, height)| height as usize)
+        .unwrap_or(24);
+    height.saturating_sub(10).clamp(6, 18)
+}
+
+fn picker_offset(selected: usize, total: usize, viewport: usize) -> usize {
+    if total <= viewport {
+        return 0;
+    }
+    let half = viewport / 2;
+    selected
+        .saturating_sub(half)
+        .min(total.saturating_sub(viewport))
+}
+
+fn scrollbar_glyph(row: usize, viewport: usize, offset: usize, total: usize) -> &'static str {
+    if total <= viewport {
+        return " ";
+    }
+    let thumb_size = ((viewport * viewport) / total).clamp(1, viewport);
+    let max_thumb_top = viewport - thumb_size;
+    let max_offset = total - viewport;
+    let thumb_top = (offset * max_thumb_top + max_offset / 2)
+        .checked_div(max_offset)
+        .unwrap_or(0);
+    if row >= thumb_top && row < thumb_top + thumb_size {
+        "#"
+    } else {
+        "|"
+    }
 }
 
 struct TerminalMode;
@@ -479,14 +592,14 @@ struct TerminalMode;
 impl TerminalMode {
     fn enter() -> Result<Self> {
         terminal::enable_raw_mode()?;
-        execute!(io::stdout(), EnterAlternateScreen, cursor::Hide)?;
+        execute!(io::stderr(), EnterAlternateScreen, cursor::Hide)?;
         Ok(Self)
     }
 }
 
 impl Drop for TerminalMode {
     fn drop(&mut self) {
-        let _ = execute!(io::stdout(), cursor::Show, LeaveAlternateScreen);
+        let _ = execute!(io::stderr(), cursor::Show, LeaveAlternateScreen);
         let _ = terminal::disable_raw_mode();
     }
 }
@@ -591,7 +704,12 @@ fn resolve_installed_version(
         },
         1 => Ok(versions[0].value.clone()),
         _ if state.config.auto_answer => Ok(versions[0].value.clone()),
-        _ => select_version(candidate, requested.unwrap_or("installed"), &versions),
+        _ => select_version(
+            state,
+            candidate,
+            requested.unwrap_or("installed"),
+            &versions,
+        ),
     }
 }
 
@@ -694,7 +812,7 @@ fn env_cmd(state: &State, action: EnvAction, emit: EmitMode) -> Result<()> {
 fn emit_update(mode: EmitMode, update: &EnvUpdate) -> Result<()> {
     match mode {
         EmitMode::None => {}
-        EmitMode::PowerShell => println!("{}", serde_json::to_string(update)?),
+        EmitMode::PowerShell => println!("{ENV_JSON_PREFIX}{}", serde_json::to_string(update)?),
         EmitMode::Cmd => {
             for (key, value) in &update.set {
                 println!("set \"{}={}\"", key, value);

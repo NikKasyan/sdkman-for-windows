@@ -42,12 +42,14 @@ if (
         ($SdkArgs[0] -eq "env" -and $SdkArgs.Count -gt 1 -and $SdkArgs[1] -eq "install")
     )
 ) {
-    $json = & $exe "--emit-env" @SdkArgs
+    $output = & $exe "--emit-env" @SdkArgs
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
     }
 
+    $json = $output | Where-Object { $_ -like "__SDKMAN_ENV_JSON__*" } | Select-Object -Last 1
     if ($json) {
+        $json = $json.Substring("__SDKMAN_ENV_JSON__".Length)
         $updates = $json | ConvertFrom-Json
         foreach ($var in $updates.set.PSObject.Properties) {
             Set-Item -Path "Env:$($var.Name)" -Value ([string]$var.Value)
