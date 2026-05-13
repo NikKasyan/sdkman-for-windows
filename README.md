@@ -4,6 +4,8 @@ Native Windows SDKMAN-style SDK manager.
 
 This project provides a compiled `sdk.exe` CLI plus PowerShell and CMD wrappers. It stores SDKs under `%USERPROFILE%\.sdkman-windows`, uses stable `current` links per candidate, and generates command shims in `%USERPROFILE%\.sdkman-windows\shims`.
 
+This project is completely separate from the official SDKMAN project. It is an independent Windows-native compatibility tool and is not affiliated with, endorsed by, or maintained by SDKMAN.
+
 ## Status
 
 V1 implements the core SDKMAN-style workflow:
