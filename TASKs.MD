@@ -393,6 +393,8 @@ Verification:
 
 ### TASK-025: Add shim generation tests
 
+Status: Done.
+
 Problem: shim generation is central to PATH behavior but currently untested.
 
 Work:
