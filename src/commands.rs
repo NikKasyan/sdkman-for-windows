@@ -21,7 +21,7 @@ use tempfile::TempDir;
 use crate::{
     api::{Api, Version},
     archive,
-    cli::{Args, Command, ConfigAction, EnvAction, FlushTarget, OfflineAction},
+    cli::{Args, Command, ConfigAction, EnvAction, FlushTarget, OfflineAction, Order},
     config::Config,
     envfile, fslink, shims,
     state::{display_path, session_home_var, InstallRecord, State},
@@ -45,7 +45,7 @@ pub fn execute(args: Args, state: State) -> Result<()> {
     };
     match command {
         Command::Init => init(&state),
-        Command::List { candidate } => list(&state, candidate),
+        Command::List { candidate, order } => list(&state, candidate, order),
         Command::Install {
             candidate,
             version,
@@ -102,8 +102,9 @@ fn init(state: &State) -> Result<()> {
     Ok(())
 }
 
-fn list(state: &State, candidate: Option<String>) -> Result<()> {
+fn list(state: &State, candidate: Option<String>, order: Option<Order>) -> Result<()> {
     state.init()?;
+    let order = order.unwrap_or(Order::Desc);
     if let Some(ref candidate) = candidate {
         ensure_candidate_exists(state, candidate)?;
     }
@@ -131,7 +132,8 @@ fn list(state: &State, candidate: Option<String>) -> Result<()> {
             }
             let api = Api::new(state)?;
             println!("Available {candidate} Versions");
-            let remote_versions = api.versions(&candidate, false)?;
+            let mut remote_versions = api.versions(&candidate, false)?;
+            sort_versions_by_vendor_and_version(&mut remote_versions, order);
             let java_table = candidate.eq_ignore_ascii_case("java")
                 && remote_versions
                     .iter()
@@ -152,9 +154,13 @@ fn list(state: &State, candidate: Option<String>) -> Result<()> {
                 )?;
                 printed.insert(version.value);
             }
-            for version in installed {
-                if printed.insert(version.clone()) {
-                    let version = Version::local(version);
+            let mut installed_versions_local = installed
+                .into_iter()
+                .map(Version::local)
+                .collect::<Vec<_>>();
+            sort_versions_by_vendor_and_version(&mut installed_versions_local, order);
+            for version in installed_versions_local {
+                if printed.insert(version.value.clone()) {
                     print_list_version_or_java_row(
                         state,
                         &candidate,
@@ -168,6 +174,53 @@ fn list(state: &State, candidate: Option<String>) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn sort_versions_by_vendor_and_version(versions: &mut [Version], order: Order) {
+    fn parse_semver(s: &str) -> (i64, i64, i64, String) {
+        // Split into main part and suffix after first '-'
+        let mut parts = s.splitn(2, '-');
+        let main = parts.next().unwrap_or("");
+        let suffix = parts.next().unwrap_or("").to_string();
+        // Extract up to three numeric components from the main part
+        let nums = main
+            .split(|c: char| !c.is_ascii_digit())
+            .filter(|p| !p.is_empty())
+            .map(|p| p.parse::<i64>().unwrap_or(0))
+            .collect::<Vec<_>>();
+        let major = *nums.get(0).unwrap_or(&0);
+        let minor = *nums.get(1).unwrap_or(&0);
+        let patch = *nums.get(2).unwrap_or(&0);
+        (major, minor, patch, suffix)
+    }
+
+    versions.sort_by(|a, b| {
+        let sa = a.display_version.as_deref().unwrap_or(&a.value);
+        let sb = b.display_version.as_deref().unwrap_or(&b.value);
+        let (am, an, ap, asuf) = parse_semver(sa);
+        let (bm, bn, bp, bsuf) = parse_semver(sb);
+
+        // Primary: numeric semver comparison (major, minor, patch)
+        match am.cmp(&bm).then(an.cmp(&bn)).then(ap.cmp(&bp)) {
+            std::cmp::Ordering::Equal => {
+                // Tie-breaker: vendor (case-insensitive), then suffix, then full string
+                let va = a.vendor.as_deref().unwrap_or("");
+                let vb = b.vendor.as_deref().unwrap_or("");
+                match va.to_lowercase().cmp(&vb.to_lowercase()) {
+                    std::cmp::Ordering::Equal => match asuf.cmp(&bsuf) {
+                        std::cmp::Ordering::Equal => sa.cmp(sb),
+                        ord => ord,
+                    },
+                    ord => ord,
+                }
+            }
+            ord => ord,
+        }
+    });
+
+    if let Order::Desc = order {
+        versions.reverse();
+    }
 }
 
 fn print_java_table_header() {
@@ -443,10 +496,16 @@ fn select_version_interactive(
         current: current.as_deref(),
         installed: &installed,
     };
+
+    // Work on a local, mutable copy so we can re-sort when the user toggles order.
+    let mut versions_vec = versions.to_vec();
+    let mut order = Order::Desc;
+    sort_versions_by_vendor_and_version(&mut versions_vec, order);
+
     let mut selected = 0usize;
 
     loop {
-        draw_version_picker(&mut out, &context, versions, selected)?;
+        draw_version_picker(&mut out, &context, &versions_vec, selected, order)?;
         if let Event::Key(key) = event::read()? {
             if key.kind != KeyEventKind::Press {
                 continue;
@@ -456,21 +515,52 @@ fn select_version_interactive(
                     selected = selected.saturating_sub(1);
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
-                    selected = (selected + 1).min(versions.len() - 1);
+                    selected = (selected + 1).min(versions_vec.len() - 1);
                 }
                 KeyCode::PageUp => {
                     selected = selected.saturating_sub(picker_page_size());
                 }
                 KeyCode::PageDown => {
-                    selected = (selected + picker_page_size()).min(versions.len() - 1);
+                    selected = (selected + picker_page_size()).min(versions_vec.len() - 1);
                 }
                 KeyCode::Home => selected = 0,
-                KeyCode::End => selected = versions.len() - 1,
+                KeyCode::End => selected = versions_vec.len() - 1,
                 KeyCode::Enter => {
-                    return Ok(versions[selected].value.clone());
+                    return Ok(versions_vec[selected].value.clone());
                 }
                 KeyCode::Esc | KeyCode::Char('q') => {
                     bail!("selection cancelled");
+                }
+                KeyCode::Char(c) if c.is_digit(10) => {
+                    // Map 1-9 to visible rows
+                    let viewport = picker_page_size().min(versions_vec.len());
+                    let offset = picker_offset(selected, versions_vec.len(), viewport);
+                    let digit = c.to_digit(10).unwrap();
+                    if digit >= 1 && digit <= 9 {
+                        let idx = offset + (digit as usize) - 1;
+                        if idx < versions_vec.len() {
+                            selected = idx;
+                        }
+                    }
+                }
+                KeyCode::Char('s') => {
+                    // Toggle sort order and re-sort while keeping selection on the same item if possible.
+                    order = match order {
+                        Order::Desc => Order::Asc,
+                        Order::Asc => Order::Desc,
+                    };
+                    // Remember currently selected identifier
+                    let selected_id = versions_vec.get(selected).map(|v| v.value.clone());
+                    sort_versions_by_vendor_and_version(&mut versions_vec, order);
+                    // Restore selected index to the same identifier if present
+                    if let Some(id) = selected_id {
+                        selected = versions_vec
+                            .iter()
+                            .position(|v| v.value == id)
+                            .unwrap_or(0);
+                    } else {
+                        selected = 0;
+                    }
                 }
                 _ => {}
             }
@@ -498,6 +588,7 @@ fn draw_version_picker(
     context: &PickerContext<'_>,
     versions: &[Version],
     selected: usize,
+    order: Order,
 ) -> Result<()> {
     let viewport = picker_page_size().min(versions.len());
     let offset = picker_offset(selected, versions.len(), viewport);
@@ -513,6 +604,14 @@ fn draw_version_picker(
             " Select {} version matching '{}'\n\n",
             context.candidate, context.requested
         )),
+        Print(format!(
+            " Sorted by: Vendor, Version ({})\n",
+            match order {
+                Order::Desc => "desc (highest first)",
+                Order::Asc => "asc (lowest first)",
+            }
+        )),
+        Print(" Shortcuts: Up/Down, PgUp/PgDn, Enter, s toggle sort, 1-9 select, Esc/q.\n\n"),
         Print(format!(
             "   {:<2} {:<18} {:<10} {:<18} \n",
             "", "Identifier", "Dist", "Status"

@@ -37,6 +37,8 @@ pub enum Command {
     List {
         #[arg(help = "Candidate to list versions for, for example java or maven")]
         candidate: Option<String>,
+        #[arg(long, value_enum, help = "Order versions by vendor then version; default desc (highest first)")]
+        order: Option<Order>,
     },
     #[command(
         about = "Install or register an SDK version",
@@ -207,6 +209,14 @@ pub enum FlushTarget {
     Metadata,
     #[value(help = "Clear archives, temporary files, and metadata")]
     All,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum Order {
+    #[value(help = "Ascending order (lowest first)")]
+    Asc,
+    #[value(help = "Descending order (highest first)")]
+    Desc,
 }
 
 #[derive(Debug, Subcommand)]
