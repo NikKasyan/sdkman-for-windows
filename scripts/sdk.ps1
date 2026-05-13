@@ -1,19 +1,32 @@
+param(
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$SdkArgs
+)
+
 $ErrorActionPreference = "Stop"
 
 $root = if ($env:SDKMAN_WINDOWS_DIR) { $env:SDKMAN_WINDOWS_DIR } else { Join-Path $env:USERPROFILE ".sdkman-windows" }
 $exe = Join-Path $root "bin\sdk.exe"
+$shimDir = Join-Path $root "shims"
 
 if (!(Test-Path $exe)) {
     throw "sdk.exe not found at $exe"
 }
 
+if (Test-Path $shimDir) {
+    $existing = $env:PATH -split ';' | Where-Object {
+        $_ -and $_.Trim().Length -gt 0 -and $_ -ine $shimDir
+    }
+    $env:PATH = (@($shimDir) + $existing) -join ';'
+}
+
 if (
-    $args.Count -gt 0 -and (
-        $args[0] -eq "use" -or
-        ($args[0] -eq "env" -and $args.Count -gt 1 -and $args[1] -eq "install")
+    $SdkArgs.Count -gt 0 -and (
+        $SdkArgs[0] -eq "use" -or
+        ($SdkArgs[0] -eq "env" -and $SdkArgs.Count -gt 1 -and $SdkArgs[1] -eq "install")
     )
 ) {
-    $json = & $exe "--emit-env" @args
+    $json = & $exe "--emit-env" @SdkArgs
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
     }
@@ -35,5 +48,20 @@ if (
     return
 }
 
-& $exe @args
+if (
+    $SdkArgs.Count -gt 0 -and (
+        $SdkArgs[0] -eq "install" -or
+        $SdkArgs[0] -eq "default" -or
+        $SdkArgs[0] -eq "uninstall" -or
+        $SdkArgs[0] -eq "rm"
+    )
+) {
+    & $exe @SdkArgs
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+    return
+}
+
+& $exe @SdkArgs
 exit $LASTEXITCODE

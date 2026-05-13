@@ -24,11 +24,8 @@ if ($currentPath) {
     $parts = $currentPath -split ';' | Where-Object { $_ -and $_.Trim().Length -gt 0 }
 }
 
-foreach ($entry in @($scriptDir, $binDir, $shimDir)) {
-    if ($parts -notcontains $entry) {
-        $parts += $entry
-    }
-}
+$managedEntries = @($scriptDir, $shimDir, $binDir)
+$parts = @($managedEntries) + @($parts | Where-Object { $managedEntries -notcontains $_ })
 
 [Environment]::SetEnvironmentVariable("Path", ($parts -join ';'), "User")
 
