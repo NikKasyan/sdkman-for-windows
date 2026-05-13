@@ -1,5 +1,4 @@
 use anyhow::{bail, Context, Result};
-use reqwest::blocking::Client;
 use std::{
     fs,
     io::{self, Write},
@@ -46,12 +45,11 @@ pub(super) fn install(
         println!("Registered {candidate} {version} as local install.");
     } else {
         let api = Api::new(state)?;
-        let client = Client::builder().build()?;
         let base_name = format!("{candidate}-{version}");
         println!("Downloading: {candidate} {version}");
         let urls = api.download_url(candidate, &version);
         let archive_path =
-            archive::download_with_fallback(&client, &urls, &state.archives_dir(), &base_name)
+            archive::download_with_fallback(api.client(), &urls, &state.archives_dir(), &base_name)
                 .with_context(|| format!("failed to download {candidate} {version}"))?;
         let tmp = TempDir::new_in(state.tmp_dir())?;
         println!("Installing: {candidate} {version}");

@@ -4,7 +4,7 @@ use reqwest::blocking::Client;
 use std::{
     fs::{self, File},
     io::{self, Read, Write},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     time::{Duration, Instant},
 };
 use tar::Archive;
@@ -146,6 +146,14 @@ fn extract_tar<R: Read>(mut archive: Archive<R>, target_dir: &Path) -> Result<()
     let mut extracted = 0;
     for entry in archive.entries()? {
         let mut entry = entry?;
+        if !is_safe_relative_path(&entry.path()?) {
+            progress.update(extracted + 1)?;
+            continue;
+        }
+        let entry_type = entry.header().entry_type();
+        if entry_type.is_symlink() || entry_type.is_hard_link() {
+            bail!("archive contains unsupported link entry");
+        }
         entry.unpack_in(target_dir)?;
         extracted += 1;
         progress.update(extracted)?;
@@ -160,7 +168,7 @@ fn normalize_root(target_dir: &Path) -> Result<PathBuf> {
     if target_dir.join("bin").exists() {
         return Ok(target_dir.to_path_buf());
     }
-    // Single nested directory → treat it as the SDK root (typical archive layout).
+    // Single nested directory: treat it as the SDK root (typical archive layout).
     if entries.len() == 1 && entries[0].file_type()?.is_dir() {
         return Ok(entries[0].path());
     }
@@ -171,6 +179,11 @@ fn normalize_root(target_dir: &Path) -> Result<PathBuf> {
         }
     }
     Ok(target_dir.to_path_buf())
+}
+
+fn is_safe_relative_path(path: &Path) -> bool {
+    path.components()
+        .all(|component| matches!(component, Component::Normal(_) | Component::CurDir))
 }
 
 pub fn move_normalized(normalized: &Path, final_dir: &Path) -> Result<()> {
@@ -351,6 +364,18 @@ mod tests {
         builder.into_inner().unwrap().finish().unwrap()
     }
 
+    fn make_tar_gz_with_link(name: &str, target: &str) -> Vec<u8> {
+        let enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        let mut builder = tar::Builder::new(enc);
+        let mut header = tar::Header::new_gnu();
+        header.set_entry_type(tar::EntryType::Symlink);
+        header.set_size(0);
+        header.set_mode(0o777);
+        header.set_cksum();
+        builder.append_link(&mut header, name, target).unwrap();
+        builder.into_inner().unwrap().finish().unwrap()
+    }
+
     #[test]
     fn extract_zip_with_nested_sdk_root() {
         let zip_bytes = make_zip(&[
@@ -419,5 +444,33 @@ mod tests {
         // The traversal entry must not have created a file outside extract_dir
         let evil = extract_dir.path().parent().unwrap().join("evil.txt");
         assert!(!evil.exists());
+    }
+
+    #[test]
+    fn unsafe_tar_paths_are_rejected_by_path_filter() {
+        assert!(is_safe_relative_path(Path::new("safe/file.txt")));
+        assert!(is_safe_relative_path(Path::new("./safe/file.txt")));
+        assert!(!is_safe_relative_path(Path::new("../evil.txt")));
+        assert!(!is_safe_relative_path(Path::new("safe/../../evil.txt")));
+        assert!(!is_safe_relative_path(Path::new(r"C:\evil.txt")));
+    }
+
+    #[test]
+    fn tar_link_entries_are_rejected() {
+        let tar_bytes = make_tar_gz_with_link("sdk/bin/tool", "../../outside");
+        let tmp = TempDir::new().unwrap();
+        let tgz_path = tmp.path().join("link.tar.gz");
+        fs::write(&tgz_path, &tar_bytes).unwrap();
+
+        let extract_dir = TempDir::new().unwrap();
+        let error = extract_tar(
+            Archive::new(GzDecoder::new(File::open(&tgz_path).unwrap())),
+            extract_dir.path(),
+        )
+        .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("archive contains unsupported link entry"));
     }
 }

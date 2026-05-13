@@ -85,7 +85,10 @@ fn ensure_candidate_exists(state: &State, candidate: &str) -> Result<()> {
     }
     let api = Api::new(state)?;
     let remote = api.candidates(state.config.offline_mode)?;
-    if remote.iter().any(|c| c.name.eq_ignore_ascii_case(candidate)) {
+    if remote
+        .iter()
+        .any(|c| c.name.eq_ignore_ascii_case(candidate))
+    {
         Ok(())
     } else {
         bail!("Unknown candidate: {}", candidate)
@@ -115,7 +118,12 @@ fn resolve_installed_version(
         },
         1 => Ok(versions[0].value.clone()),
         _ if state.config.auto_answer => Ok(versions[0].value.clone()),
-        _ => picker::select_version(state, candidate, requested.unwrap_or("installed"), &versions),
+        _ => picker::select_version(
+            state,
+            candidate,
+            requested.unwrap_or("installed"),
+            &versions,
+        ),
     }
 }
 

@@ -109,6 +109,10 @@ impl Api {
             .collect()
     }
 
+    pub fn client(&self) -> &Client {
+        &self.client
+    }
+
     pub fn refresh(&self) -> Result<()> {
         let _ = self.candidates(false)?;
         Ok(())

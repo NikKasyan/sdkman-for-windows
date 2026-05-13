@@ -260,9 +260,7 @@ fn draw_picker(
 }
 
 fn page_size() -> usize {
-    let height = terminal::size()
-        .map(|(_, h)| h as usize)
-        .unwrap_or(24);
+    let height = terminal::size().map(|(_, h)| h as usize).unwrap_or(24);
     height.saturating_sub(10).clamp(6, 18)
 }
 

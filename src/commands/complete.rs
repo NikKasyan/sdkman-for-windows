@@ -148,5 +148,8 @@ fn matching(values: &[&str], prefix: &str) -> Vec<String> {
 fn matching_owned(mut values: Vec<String>, prefix: &str) -> Vec<String> {
     values.sort();
     values.dedup();
-    values.into_iter().filter(|v| v.starts_with(prefix)).collect()
+    values
+        .into_iter()
+        .filter(|v| v.starts_with(prefix))
+        .collect()
 }

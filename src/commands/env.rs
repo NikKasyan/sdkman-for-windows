@@ -99,10 +99,7 @@ pub(super) fn env_cmd(state: &State, action: EnvAction, emit: EmitMode) -> Resul
                         record.path.display().to_string(),
                     );
                     update.set.insert(
-                        format!(
-                            "{}_HOME",
-                            candidate.to_ascii_uppercase().replace('-', "_")
-                        ),
+                        format!("{}_HOME", candidate.to_ascii_uppercase().replace('-', "_")),
                         record.path.display().to_string(),
                     );
                     let bin = record.path.join("bin");
