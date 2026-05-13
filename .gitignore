@@ -1,0 +1,9 @@
+/target/
+/.idea/
+/.vscode/
+*.pdb
+*.log
+.DS_Store
+
+# Local SDKMAN for Windows state if someone points SDKMAN_WINDOWS_DIR here.
+/.sdkman-windows/
