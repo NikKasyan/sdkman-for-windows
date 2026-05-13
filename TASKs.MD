@@ -455,6 +455,8 @@ Verification:
 
 ### TASK-029: Support comments after `.sdkmanrc` values
 
+Status: Done.
+
 Problem: inline comments are common in config-style files.
 
 Work:

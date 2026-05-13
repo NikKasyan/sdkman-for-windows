@@ -20,7 +20,7 @@ pub fn parse_text(text: &str) -> Result<BTreeMap<String, String>> {
         }
         if let Some((candidate, version)) = line.split_once('=') {
             let candidate = candidate.trim();
-            let version = version.trim();
+            let version = strip_inline_comment(version).trim();
             let line_number = index + 1;
             if candidate.is_empty() {
                 bail!(".sdkmanrc line {line_number} has an empty candidate");
@@ -37,6 +37,19 @@ pub fn parse_text(text: &str) -> Result<BTreeMap<String, String>> {
         }
     }
     Ok(values)
+}
+
+fn strip_inline_comment(value: &str) -> &str {
+    for (index, _) in value.match_indices('#') {
+        if value[..index]
+            .chars()
+            .last()
+            .is_some_and(char::is_whitespace)
+        {
+            return &value[..index];
+        }
+    }
+    value
 }
 
 #[cfg(test)]
@@ -68,5 +81,17 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains(".sdkmanrc line 2 duplicates candidate java"));
+    }
+
+    #[test]
+    fn supports_inline_comments_after_values() {
+        let values = parse_text("java=21-tem # local project version\n").unwrap();
+        assert_eq!(values["java"], "21-tem");
+    }
+
+    #[test]
+    fn preserves_hash_inside_unspaced_values() {
+        let values = parse_text("java=21#tem\n").unwrap();
+        assert_eq!(values["java"], "21#tem");
     }
 }
