@@ -43,7 +43,37 @@ function Set-SdkmanPathEntries {
         }
     }
 
-    [Environment]::SetEnvironmentVariable("Path", (($ManagedEntries + $preservedEntries) -join ';'), $Scope)
+    # Build final entries with managed entries first, then preserved entries.
+    $combined = @($ManagedEntries + $preservedEntries)
+
+    # Normalize and deduplicate while preserving order
+    $seen = @{}
+    $unique = New-Object System.Collections.Generic.List[string]
+    foreach ($entry in $combined) {
+        if (!$entry) { continue }
+        $key = Get-PathEntryKey $entry
+        if (-not $seen.ContainsKey($key)) {
+            $seen[$key] = $true
+            $unique.Add($entry)
+        }
+    }
+
+    # Detect common candidate bin references to avoid duplicate-ish entries
+    $candidates = @('java','maven','gradle','kotlin')
+    $foundCandidates = @()
+    foreach ($entry in $unique) {
+        $lower = $entry.Trim().ToLowerInvariant()
+        foreach ($c in $candidates) {
+            if ($lower -like "*\$c\*\bin*" -or $lower -like "*\$c\*\\bin*") {
+                if (-not ($foundCandidates -contains $c)) { $foundCandidates += $c }
+            }
+        }
+    }
+    if ($foundCandidates.Count -gt 0) {
+        Write-Host "Detected existing candidate bin paths in PATH: $($foundCandidates -join ', '). Duplicates were removed." -ForegroundColor Cyan
+    }
+
+    [Environment]::SetEnvironmentVariable("Path", ($unique -join ';'), $Scope)
 }
 
 function Get-ReleaseValue {
@@ -163,6 +193,25 @@ function Find-ExistingSdkHomes {
         if ($base -and (Test-Path -LiteralPath $base)) {
             Get-ChildItem -LiteralPath $base -Directory -ErrorAction SilentlyContinue | ForEach-Object {
                 $roots.Add($_.FullName)
+            }
+        }
+    }
+
+    # Also attempt to locate common executables on PATH (java, mvn, gradle, etc.)
+    foreach ($relative in $ExecutableRelativePaths) {
+        $exeName = Split-Path -Leaf $relative
+        try {
+            $cmd = Get-Command $exeName -ErrorAction SilentlyContinue
+        } catch {
+            $cmd = $null
+        }
+        if ($cmd -and $cmd.Path) {
+            # exe path -> ..\bin -> parent = SDK home
+            $exePath = $cmd.Path
+            $binDir = Split-Path -Parent $exePath
+            $homeDir = Split-Path -Parent $binDir
+            if ($homeDir -and (Test-Path -LiteralPath $homeDir)) {
+                $roots.Add($homeDir)
             }
         }
     }
