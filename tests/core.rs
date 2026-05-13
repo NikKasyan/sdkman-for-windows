@@ -178,3 +178,57 @@ fn sdkmanrc_env_install_fails_when_version_is_missing() {
             "java missing-local is not installed",
         ));
 }
+
+#[cfg(windows)]
+#[test]
+fn offline_mode_allows_local_workflows_and_blocks_network_workflows() {
+    let sdkman_home = TempDir::new().unwrap();
+    let sdk_home = create_fake_sdk("sample");
+    register_local_sdk(sdkman_home.path(), "sample", "1.0-local", sdk_home.path());
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .args(["offline", "enable"])
+        .assert()
+        .success();
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .args(["list", "sample"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "Offline Mode: only showing installed sample versions",
+        ))
+        .stdout(predicates::str::contains("* 1.0-local"));
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .args(["install", "java", "21-remote"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "install requires network while offline mode is enabled",
+        ));
+
+    let offline_sdk_home = create_fake_sdk("offline");
+    register_local_sdk(
+        sdkman_home.path(),
+        "offline",
+        "1.0-local",
+        offline_sdk_home.path(),
+    );
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .args(["update"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "update requires network while offline mode is enabled",
+        ));
+}

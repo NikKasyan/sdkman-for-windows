@@ -191,6 +191,8 @@ Verification:
 
 ### TASK-012: Add clearer offline mode behavior
 
+Status: Done.
+
 Problem: offline mode works in basic paths but lacks thorough user-facing and test coverage.
 
 Work:
