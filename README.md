@@ -56,11 +56,27 @@ cargo build --release
 .\install.ps1 -SdkExe .\target\release\sdk.exe
 ```
 
-Open a new terminal after installation so PATH changes are visible.
+The installer copies `sdk.exe`, installs the PowerShell and CMD wrappers, updates the user PATH, registers PowerShell completions, and runs `sdk init` for the selected install directory automatically. Open a new terminal after installation so PATH changes are visible.
 
 PowerShell users should invoke the installed `sdk.ps1` wrapper, and CMD users should invoke `sdk.cmd`. The installer puts the wrapper directory before the raw binary so `sdk use` and `sdk env install` can update the current shell session.
 
 The installer also registers PowerShell tab completion through your PowerShell profile. Completion suggests install versions from SDKMAN metadata, respecting offline mode and cached metadata, and suggests `use` versions from currently installed versions only. Pass `-SkipProfileUpdate` to `install.ps1` if you do not want the installer to edit your PowerShell profile.
+
+## Uninstall
+
+```powershell
+.\uninstall.ps1
+```
+
+By default the uninstaller removes SDKMAN for Windows from the user PATH, removes the PowerShell completion profile entry, and deletes the installed wrapper, binary, and generated shim files. It leaves installed SDKs, metadata, archives, and config under `%USERPROFILE%\.sdkman-windows` in place.
+
+To remove the entire SDKMAN for Windows home, including downloaded SDKs and metadata, run:
+
+```powershell
+.\uninstall.ps1 -RemoveData
+```
+
+External local SDK directories registered with `sdk install <candidate> <version> <path>` are not removed.
 
 ## Workspace Git Note
 

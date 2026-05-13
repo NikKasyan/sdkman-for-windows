@@ -266,6 +266,13 @@ fn resolve_linkish(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn env_lock() -> MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner())
+    }
 
     #[test]
     fn display_path_strips_windows_verbatim_drive_prefix() {
@@ -306,6 +313,7 @@ mod tests {
 
     #[test]
     fn active_home_falls_back_to_conventional_home_variable() {
+        let _guard = env_lock();
         let root = tempfile::TempDir::new().unwrap();
         let home = root.path().join("sample-home");
         let state = State {
@@ -323,6 +331,7 @@ mod tests {
 
     #[test]
     fn active_home_prefers_sdkman_session_home_over_conventional_home() {
+        let _guard = env_lock();
         let root = tempfile::TempDir::new().unwrap();
         let conventional = root.path().join("conventional-home");
         let sdkman = root.path().join("sdkman-home");
@@ -342,6 +351,7 @@ mod tests {
 
     #[test]
     fn active_home_prefers_sdkman_session_home_even_when_shims_win_path() {
+        let _guard = env_lock();
         let root = tempfile::TempDir::new().unwrap();
         let state = State {
             root: root.path().join("sdkman"),
@@ -365,6 +375,7 @@ mod tests {
 
     #[test]
     fn active_home_prefers_current_link_when_shims_win_path() {
+        let _guard = env_lock();
         let root = tempfile::TempDir::new().unwrap();
         let state = State {
             root: root.path().join("sdkman"),
@@ -392,6 +403,7 @@ mod tests {
 
     #[test]
     fn active_home_prefers_env_home_when_env_bin_wins_path() {
+        let _guard = env_lock();
         let root = tempfile::TempDir::new().unwrap();
         let state = State {
             root: root.path().join("sdkman"),

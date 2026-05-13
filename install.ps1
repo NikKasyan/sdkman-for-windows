@@ -31,7 +31,17 @@ $parts = @($managedEntries) + @($parts | Where-Object { $managedEntries -notcont
 
 [Environment]::SetEnvironmentVariable("Path", ($parts -join ';'), "User")
 
-& (Join-Path $binDir "sdk.exe") init
+$previousSdkmanWindowsDir = $env:SDKMAN_WINDOWS_DIR
+try {
+    $env:SDKMAN_WINDOWS_DIR = $InstallDir
+    & (Join-Path $binDir "sdk.exe") init
+} finally {
+    if ($null -eq $previousSdkmanWindowsDir) {
+        Remove-Item Env:SDKMAN_WINDOWS_DIR -ErrorAction SilentlyContinue
+    } else {
+        $env:SDKMAN_WINDOWS_DIR = $previousSdkmanWindowsDir
+    }
+}
 
 if (!$SkipProfileUpdate) {
     $profileDir = Split-Path -Parent $PROFILE
