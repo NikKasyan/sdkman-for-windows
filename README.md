@@ -22,6 +22,33 @@ sdk flush tmp
 
 Out of scope for v1: `upgrade`, `selfupdate`, completions, and SDKMAN broadcast messages.
 
+## Usage
+
+Run `sdk` or `sdk help` to see the command guide. Run `sdk help <command>` for command-specific details and examples.
+
+| Command | What it does | Use it when |
+| --- | --- | --- |
+| `sdk init` | Creates the SDKMAN for Windows directory layout under `%USERPROFILE%\.sdkman-windows`. | You copied `sdk.exe` manually or want to prepare the home directory before installing SDKs. |
+| `sdk list` | Lists available SDKMAN candidates. | You want to see candidate names such as `java` or `maven`. |
+| `sdk list <candidate>` | Lists versions for one candidate and marks installed/current versions where possible. | You want to choose or inspect versions for a candidate. |
+| `sdk install <candidate> [version]` | Downloads and installs a remote SDK version. If no version is supplied, the latest available version is selected. | You want SDKMAN for Windows to manage the SDK files. |
+| `sdk install <candidate> <version> <path>` | Registers an existing local SDK directory without copying it. | You already have an SDK installed somewhere and want SDKMAN-style switching. |
+| `sdk uninstall <candidate> <version>` | Removes a downloaded SDK version. For local registrations, it only removes the registration. Alias: `sdk rm`. | You no longer want a version managed by this tool. |
+| `sdk use <candidate> <version>` | Selects a version for the current shell session by setting HOME variables and prepending that SDK's `bin` directory to PATH. | You want a temporary version without changing the default. |
+| `sdk default <candidate> <version>` | Sets the default version by updating the candidate `current` link and regenerating shims. | You want commands such as `java` or `mvn` to resolve to this version by default. |
+| `sdk current [candidate]` | Shows the active SDK home for one candidate or all installed candidates. | You want to confirm what version is active. |
+| `sdk home <candidate> [version]` | Prints the active or version-specific SDK home path. | You need a path for scripts, troubleshooting, or manual inspection. |
+| `sdk env init` | Creates a `.sdkmanrc` in the current directory. | You want a project to declare its required SDK versions. |
+| `sdk env install` | Reads `.sdkmanrc` and applies those versions to the current shell. | You enter a project and want its SDK versions active. |
+| `sdk env clear` | Removes the current directory's `.sdkmanrc`. | You no longer want project-local SDK declarations there. |
+| `sdk offline enable` | Enables offline mode. | You want to block network-backed commands and use installed/local versions only. |
+| `sdk offline disable` | Disables offline mode. | You want remote listing, metadata refresh, or downloads again. |
+| `sdk update` | Refreshes cached SDKMAN candidate and version metadata. | Listings or installs should use fresh catalog data. |
+| `sdk flush <target>` | Clears `archives`, `tmp`, `metadata`, or `all` caches. | You want downloads, extraction scratch data, or metadata rebuilt. |
+| `sdk config` | Prints the config path and current values. | You want to inspect settings. |
+| `sdk config set <key> <value>` | Updates a supported SDKMAN-style configuration key. | You want to change behavior such as auto-answer, timeouts, or offline mode. |
+| `sdk version` | Prints version information. | You want to confirm which build is installed. |
+
 ## Install From Source
 
 ```powershell
