@@ -153,6 +153,8 @@ Verification:
 
 ### TASK-009: Regenerate shims idempotently after every default-changing operation
 
+Status: Done.
+
 Problem: shim generation should be demonstrably safe and repeatable.
 
 Work:

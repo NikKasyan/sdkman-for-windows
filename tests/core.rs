@@ -178,12 +178,17 @@ fn config_set_rejects_invalid_value() {
 
 #[cfg(windows)]
 fn create_fake_sdk(command_name: &str) -> TempDir {
+    create_fake_sdk_with_marker(command_name, "local-sdk")
+}
+
+#[cfg(windows)]
+fn create_fake_sdk_with_marker(command_name: &str, marker: &str) -> TempDir {
     let sdk_home = TempDir::new().unwrap();
     let sdk_bin = sdk_home.path().join("bin");
     fs::create_dir_all(&sdk_bin).unwrap();
     fs::write(
         sdk_bin.join(format!("{command_name}.cmd")),
-        "@echo off\r\necho local-sdk:%1:%2\r\n",
+        format!("@echo off\r\necho {marker}:%1:%2\r\n"),
     )
     .unwrap();
     sdk_home
@@ -384,4 +389,70 @@ fn offline_mode_allows_local_workflows_and_blocks_network_workflows() {
         .stderr(predicates::str::contains(
             "update requires network while offline mode is enabled",
         ));
+}
+
+#[cfg(windows)]
+#[test]
+fn default_regenerates_shims_idempotently_and_removes_stale_shims() {
+    let sdkman_home = TempDir::new().unwrap();
+    let first_home = create_fake_sdk_with_marker("sample", "first");
+    let second_home = create_fake_sdk_with_marker("sample", "second");
+
+    register_local_sdk(sdkman_home.path(), "sample", "1.0-local", first_home.path());
+    register_local_sdk(
+        sdkman_home.path(),
+        "sample",
+        "2.0-local",
+        second_home.path(),
+    );
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .args(["default", "sample", "1.0-local"])
+        .assert()
+        .success();
+
+    let shim = sdkman_home.path().join("shims").join("sample.cmd");
+    let first_shim = fs::read_to_string(&shim).unwrap();
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .args(["default", "sample", "1.0-local"])
+        .assert()
+        .success();
+
+    assert_eq!(fs::read_to_string(&shim).unwrap(), first_shim);
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .args(["default", "sample", "2.0-local"])
+        .assert()
+        .success();
+
+    let shim_output = ProcessCommand::new("cmd")
+        .args(["/C", shim.to_str().unwrap(), "hello", "world"])
+        .output()
+        .unwrap();
+    assert!(
+        shim_output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&shim_output.stdout),
+        String::from_utf8_lossy(&shim_output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&shim_output.stdout).trim(),
+        "second:hello:world"
+    );
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .args(["uninstall", "sample", "2.0-local"])
+        .assert()
+        .success();
+
+    assert!(!shim.exists());
 }
