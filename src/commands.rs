@@ -16,7 +16,7 @@ use crate::{
     cli::{Args, Command, ConfigAction, EnvAction, FlushTarget, OfflineAction},
     config::Config,
     envfile, fslink, shims,
-    state::{session_home_var, InstallRecord, State},
+    state::{display_path, session_home_var, InstallRecord, State},
 };
 
 #[derive(Serialize)]
@@ -76,7 +76,10 @@ impl EmitMode {
 
 fn init(state: &State) -> Result<()> {
     state.init()?;
-    println!("Initialized SDKMAN for Windows at {}", state.root.display());
+    println!(
+        "Initialized SDKMAN for Windows at {}",
+        display_path(&state.root)
+    );
     Ok(())
 }
 
@@ -255,7 +258,7 @@ fn use_version(state: &State, candidate: &str, version: &str, emit: EmitMode) ->
         emit_update(emit, &update)?;
     } else {
         println!("Use the PowerShell wrapper for session switching: sdk use {candidate} {version}");
-        println!("Home: {}", record.path.display());
+        println!("Home: {}", display_path(&record.path));
     }
     Ok(())
 }
@@ -275,7 +278,7 @@ fn current(state: &State, candidate: Option<String>) -> Result<()> {
     state.init()?;
     if let Some(candidate) = candidate {
         match state.active_home(&candidate, None)? {
-            Some(home) => println!("Using {candidate} at {}", home.display()),
+            Some(home) => println!("Using {candidate} at {}", display_path(&home)),
             None => println!("No {candidate} version is currently in use."),
         }
         return Ok(());
@@ -283,7 +286,7 @@ fn current(state: &State, candidate: Option<String>) -> Result<()> {
     println!("Using:");
     for candidate in state.installed_candidates()? {
         if let Some(home) = state.active_home(&candidate, None)? {
-            println!("{candidate}: {}", home.display());
+            println!("{candidate}: {}", display_path(&home));
         }
     }
     Ok(())
@@ -294,7 +297,7 @@ fn home(state: &State, candidate: &str, version: Option<String>) -> Result<()> {
     let home = state
         .active_home(candidate, version.as_deref())?
         .context("version is not installed or active")?;
-    println!("{}", home.display());
+    println!("{}", display_path(&home));
     Ok(())
 }
 
@@ -344,7 +347,7 @@ fn env_cmd(state: &State, action: EnvAction, emit: EmitMode) -> Result<()> {
                         update.prepend_path.push(bin.display().to_string());
                     }
                 } else {
-                    println!("{candidate}={version} -> {}", record.path.display());
+                    println!("{candidate}={version} -> {}", display_path(&record.path));
                 }
             }
             if emit != EmitMode::None {

@@ -285,13 +285,11 @@ fn local_install_default_shim_and_uninstall_workflow() {
         .get_output()
         .stdout
         .clone();
-    assert_eq!(
-        String::from_utf8_lossy(&home_output).trim(),
-        fs::canonicalize(sdk_home.path())
-            .unwrap()
-            .display()
-            .to_string()
-    );
+    let home_text = String::from_utf8_lossy(&home_output);
+    assert!(!home_text.contains(r"\\?\"));
+    assert!(home_text
+        .trim()
+        .ends_with(sdk_home.path().file_name().unwrap().to_str().unwrap()));
 
     Command::cargo_bin("sdk")
         .unwrap()

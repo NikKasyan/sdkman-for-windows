@@ -181,6 +181,46 @@ pub fn session_home_var(candidate: &str) -> String {
     )
 }
 
+pub fn display_path(path: &Path) -> String {
+    strip_windows_verbatim_prefix(&path.display().to_string())
+}
+
+fn strip_windows_verbatim_prefix(path: &str) -> String {
+    if let Some(stripped) = path.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{stripped}");
+    }
+    path.strip_prefix(r"\\?\").unwrap_or(path).to_string()
+}
+
 fn resolve_linkish(path: &Path) -> PathBuf {
     fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_path_strips_windows_verbatim_drive_prefix() {
+        assert_eq!(
+            strip_windows_verbatim_prefix(r"\\?\C:\Users\example\.sdkman-windows"),
+            r"C:\Users\example\.sdkman-windows"
+        );
+    }
+
+    #[test]
+    fn display_path_strips_windows_verbatim_unc_prefix() {
+        assert_eq!(
+            strip_windows_verbatim_prefix(r"\\?\UNC\server\share\.sdkman-windows"),
+            r"\\server\share\.sdkman-windows"
+        );
+    }
+
+    #[test]
+    fn display_path_leaves_normal_paths_unchanged() {
+        assert_eq!(
+            strip_windows_verbatim_prefix(r"C:\Users\example\.sdkman-windows"),
+            r"C:\Users\example\.sdkman-windows"
+        );
+    }
 }
