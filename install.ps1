@@ -44,15 +44,24 @@ try {
 }
 
 if (!$SkipProfileUpdate) {
-    $profileDir = Split-Path -Parent $PROFILE
-    if ($profileDir) {
-        New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
-    }
     $completionScript = Join-Path $scriptDir "sdk-completion.ps1"
     $completionLine = ". `"$completionScript`""
-    $profileText = if (Test-Path $PROFILE) { Get-Content -Raw $PROFILE } else { "" }
-    if ($profileText -notlike "*$completionScript*") {
-        Add-Content -Path $PROFILE -Value "`n# SDKMAN for Windows completions`n$completionLine"
+    $documents = [Environment]::GetFolderPath("MyDocuments")
+    $profiles = @(
+        $PROFILE,
+        (Join-Path $documents "PowerShell\profile.ps1"),
+        (Join-Path $documents "WindowsPowerShell\profile.ps1")
+    ) | Select-Object -Unique
+
+    foreach ($profilePath in $profiles) {
+        $profileDir = Split-Path -Parent $profilePath
+        if ($profileDir) {
+            New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
+        }
+        $profileText = if (Test-Path $profilePath) { Get-Content -Raw $profilePath } else { "" }
+        if ($profileText -notlike "*$completionScript*") {
+            Add-Content -Path $profilePath -Value "`n# SDKMAN for Windows completions`n$completionLine"
+        }
     }
 }
 

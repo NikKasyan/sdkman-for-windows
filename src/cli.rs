@@ -65,8 +65,10 @@ pub enum Command {
     Uninstall {
         #[arg(help = "Candidate name, for example java or maven")]
         candidate: String,
-        #[arg(help = "Installed version to remove or unregister")]
-        version: String,
+        #[arg(
+            help = "Installed version to remove or unregister. Omit to choose installed version"
+        )]
+        version: Option<String>,
     },
     #[command(
         about = "Use a version in the current shell",
@@ -76,8 +78,8 @@ pub enum Command {
     Use {
         #[arg(help = "Candidate name, for example java or maven")]
         candidate: String,
-        #[arg(help = "Installed version to use in this shell")]
-        version: String,
+        #[arg(help = "Installed version to use in this shell. Omit to choose installed version")]
+        version: Option<String>,
     },
     #[command(
         about = "Set the default version for a candidate",
@@ -87,8 +89,8 @@ pub enum Command {
     Default {
         #[arg(help = "Candidate name, for example java or maven")]
         candidate: String,
-        #[arg(help = "Installed version to make the default")]
-        version: String,
+        #[arg(help = "Installed version to make the default. Omit to choose installed version")]
+        version: Option<String>,
     },
     #[command(
         about = "Show active SDK versions",

@@ -13,6 +13,22 @@ if (!(Test-Path $exe)) {
     throw "sdk.exe not found at $exe"
 }
 
+$completion = Join-Path $root "scripts\sdk-completion.ps1"
+if ((Test-Path $completion) -and !(Get-Command Register-SdkmanWindowsCompletion -ErrorAction SilentlyContinue)) {
+    . $completion
+}
+
+if ($SdkArgs.Count -ge 2 -and $SdkArgs[0] -eq "completion" -and $SdkArgs[1] -eq "status") {
+    if (Get-Command Register-SdkmanWindowsCompletion -ErrorAction SilentlyContinue) {
+        Write-Host "SDKMAN for Windows completion is loaded for this PowerShell session."
+    } else {
+        Write-Host "SDKMAN for Windows completion is not loaded for this PowerShell session."
+    }
+    Write-Host "Completion script: $completion"
+    Write-Host "Reload manually with: . `"$completion`""
+    return
+}
+
 if (Test-Path $shimDir) {
     $existing = $env:PATH -split ';' | Where-Object {
         $_ -and $_.Trim().Length -gt 0 -and $_ -ine $shimDir

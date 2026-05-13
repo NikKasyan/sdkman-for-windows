@@ -31,10 +31,10 @@ Run `sdk` or `sdk help` to see the command guide. Run `sdk help <command>` for c
 | `sdk init` | Creates the SDKMAN for Windows directory layout under `%USERPROFILE%\.sdkman-windows`. | You copied `sdk.exe` manually or want to prepare the home directory before installing SDKs. |
 | `sdk list` | Lists available SDKMAN candidates. | You want to see candidate names such as `java` or `maven`. |
 | `sdk list <candidate>` | Lists versions for one candidate and marks installed/current versions where possible. | You want to choose or inspect versions for a candidate. |
-| `sdk install <candidate> [version]` | Downloads and installs a remote SDK version. If no version is supplied, the latest available version is selected. A version prefix such as `25` opens a selectable match list when it is ambiguous. | You want SDKMAN for Windows to manage the SDK files. |
+| `sdk install <candidate> [version]` | Downloads and installs a remote SDK version. If no version is supplied, the latest available version is selected. A version prefix such as `25` opens an arrow-key picker when it is ambiguous. | You want SDKMAN for Windows to manage the SDK files. |
 | `sdk install <candidate> <version> <path>` | Registers an existing local SDK directory without copying it. | You already have an SDK installed somewhere and want SDKMAN-style switching. |
 | `sdk uninstall <candidate> <version>` | Removes a downloaded SDK version. For local registrations, it only removes the registration. Alias: `sdk rm`. | You no longer want a version managed by this tool. |
-| `sdk use <candidate> <version>` | Selects a version for the current shell session by setting HOME variables and prepending that SDK's `bin` directory to PATH. | You want a temporary version without changing the default. |
+| `sdk use <candidate> <version>` | Selects a version for the current shell session by setting HOME variables and prepending that SDK's `bin` directory to PATH. Version prefixes open an arrow-key picker when ambiguous. | You want a temporary version without changing the default. |
 | `sdk default <candidate> <version>` | Sets the default version by updating the candidate `current` link and regenerating shims. | You want commands such as `java` or `mvn` to resolve to this version by default. |
 | `sdk current [candidate]` | Shows the active SDK home for one candidate or all installed candidates. | You want to confirm what version is active. |
 | `sdk home <candidate> [version]` | Prints the active or version-specific SDK home path. | You need a path for scripts, troubleshooting, or manual inspection. |
@@ -60,7 +60,19 @@ The installer copies `sdk.exe`, installs the PowerShell and CMD wrappers, update
 
 PowerShell users should invoke the installed `sdk.ps1` wrapper, and CMD users should invoke `sdk.cmd`. The installer puts the wrapper directory before the raw binary so `sdk use` and `sdk env install` can update the current shell session.
 
-The installer also registers PowerShell tab completion through your PowerShell profile. Completion suggests install versions from SDKMAN metadata, respecting offline mode and cached metadata, and suggests `use` versions from currently installed versions only. Pass `-SkipProfileUpdate` to `install.ps1` if you do not want the installer to edit your PowerShell profile.
+The installer also registers PowerShell tab completion in the current user's Windows PowerShell and PowerShell profile paths. Completion suggests install versions from SDKMAN metadata, respecting offline mode and cached metadata, and suggests `use` versions from currently installed versions only. Pass `-SkipProfileUpdate` to `install.ps1` if you do not want the installer to edit your PowerShell profiles.
+
+If tab completion falls back to directory names, reload your profile or dot-source the completion script manually:
+
+```powershell
+. "$env:USERPROFILE\.sdkman-windows\scripts\sdk-completion.ps1"
+```
+
+Running any command through the PowerShell wrapper also loads completions for the rest of that shell session. You can check the wrapper-loaded completion status with:
+
+```powershell
+sdk completion status
+```
 
 ## Uninstall
 

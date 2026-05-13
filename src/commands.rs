@@ -1,12 +1,20 @@
 use anyhow::{bail, Context, Result};
 use clap::CommandFactory;
+use crossterm::{
+    cursor,
+    event::{self, Event, KeyCode, KeyEventKind},
+    execute,
+    style::{Attribute, Print, SetAttribute},
+    terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
+};
 use reqwest::blocking::Client;
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
     env, fs,
-    io::{self, Write},
+    io::{self, IsTerminal, Write},
     path::{Path, PathBuf},
+    time::Duration,
 };
 use tempfile::TempDir;
 
@@ -41,9 +49,9 @@ pub fn execute(args: Args, state: State) -> Result<()> {
             version,
             local_path,
         } => install(&state, &candidate, version, local_path),
-        Command::Uninstall { candidate, version } => uninstall(&state, &candidate, &version),
-        Command::Use { candidate, version } => use_version(&state, &candidate, &version, emit),
-        Command::Default { candidate, version } => default_version(&state, &candidate, &version),
+        Command::Uninstall { candidate, version } => uninstall(&state, &candidate, version),
+        Command::Use { candidate, version } => use_version(&state, &candidate, version, emit),
+        Command::Default { candidate, version } => default_version(&state, &candidate, version),
         Command::Current { candidate } => current(&state, candidate),
         Command::Home { candidate, version } => home(&state, &candidate, version),
         Command::Env { action } => env_cmd(&state, action, emit),
@@ -252,12 +260,7 @@ fn install(
     let version = match version {
         Some(version) if local_path.is_some() => version,
         Some(version) => resolve_install_version(state, candidate, &version)?,
-        None => Api::new(state)?
-            .versions(candidate, state.config.offline_mode)?
-            .first()
-            .context("no versions available")?
-            .value
-            .clone(),
+        None => select_install_version(state, candidate)?,
     };
 
     if let Some(local_path) = local_path {
@@ -299,9 +302,21 @@ fn install(
     }
 
     if should_set_default(&state.config)? {
-        default_version(state, candidate, &version)?;
+        default_version(state, candidate, Some(version.clone()))?;
     }
     Ok(())
+}
+
+fn select_install_version(state: &State, candidate: &str) -> Result<String> {
+    let api = Api::new(state)?;
+    let versions = api.versions(candidate, state.config.offline_mode)?;
+    if versions.is_empty() {
+        bail!("no versions available");
+    }
+    if state.config.auto_answer {
+        return Ok(versions[0].value.clone());
+    }
+    select_version(candidate, "all", &versions)
 }
 
 fn resolve_install_version(state: &State, candidate: &str, requested: &str) -> Result<String> {
@@ -332,17 +347,34 @@ fn version_matches_prefix(version: &Version, prefix: &str) -> bool {
 }
 
 fn select_version(candidate: &str, requested: &str, versions: &[Version]) -> Result<String> {
-    println!("Multiple {candidate} versions match '{requested}':");
-    for (index, version) in versions.iter().enumerate() {
-        println!("{:>3}) {}", index + 1, format_version_choice(version));
+    if io::stdout().is_terminal() && io::stdin().is_terminal() {
+        return select_version_interactive(candidate, requested, versions);
     }
-    print!("Select version (1-{}): ", versions.len());
+
+    println!("Multiple {candidate} versions match '{requested}'");
+    println!();
+    println!(" {:>3}  {:<18} {:<10} Vendor", "#", "Identifier", "Dist");
+    println!(" {}", "-".repeat(58));
+    for (index, version) in versions.iter().enumerate() {
+        println!(
+            " {:>3}  {:<18} {:<10} {}",
+            index + 1,
+            version.value,
+            version.distribution.as_deref().unwrap_or(""),
+            version.vendor.as_deref().unwrap_or("")
+        );
+    }
+    println!();
+    print!("Select [1-{}] or q to cancel: ", versions.len());
     io::stdout().flush()?;
 
     let mut answer = String::new();
     io::stdin().read_line(&mut answer)?;
+    let answer = answer.trim();
+    if answer.eq_ignore_ascii_case("q") || answer.eq_ignore_ascii_case("quit") {
+        bail!("selection cancelled");
+    }
     let choice = answer
-        .trim()
         .parse::<usize>()
         .context("selection must be a number")?;
     if choice == 0 || choice > versions.len() {
@@ -351,19 +383,112 @@ fn select_version(candidate: &str, requested: &str, versions: &[Version]) -> Res
     Ok(versions[choice - 1].value.clone())
 }
 
-fn format_version_choice(version: &Version) -> String {
-    let mut text = version.value.clone();
-    if let Some(vendor) = &version.vendor {
-        text.push_str("  ");
-        text.push_str(vendor);
-    }
-    if let Some(display_version) = &version.display_version {
-        if display_version != &version.value {
-            text.push_str("  ");
-            text.push_str(display_version);
+fn select_version_interactive(
+    candidate: &str,
+    requested: &str,
+    versions: &[Version],
+) -> Result<String> {
+    let mut out = io::stdout();
+    let _guard = TerminalMode::enter()?;
+    drain_pending_events()?;
+    let mut selected = 0usize;
+
+    loop {
+        draw_version_picker(&mut out, candidate, requested, versions, selected)?;
+        if let Event::Key(key) = event::read()? {
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
+            match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    selected = selected.saturating_sub(1);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    selected = (selected + 1).min(versions.len() - 1);
+                }
+                KeyCode::Home => selected = 0,
+                KeyCode::End => selected = versions.len() - 1,
+                KeyCode::Enter => {
+                    return Ok(versions[selected].value.clone());
+                }
+                KeyCode::Esc | KeyCode::Char('q') => {
+                    bail!("selection cancelled");
+                }
+                _ => {}
+            }
         }
     }
-    text
+}
+
+fn drain_pending_events() -> Result<()> {
+    while event::poll(Duration::from_millis(0))? {
+        let _ = event::read()?;
+    }
+    Ok(())
+}
+
+fn draw_version_picker(
+    out: &mut io::Stdout,
+    candidate: &str,
+    requested: &str,
+    versions: &[Version],
+    selected: usize,
+) -> Result<()> {
+    execute!(
+        out,
+        cursor::MoveTo(0, 0),
+        Clear(ClearType::All),
+        Print("\n"),
+        Print(" SDKMAN for Windows\n"),
+        Print(" ==================\n\n"),
+        Print(format!(
+            " Select {candidate} version matching '{requested}'\n\n"
+        )),
+        Print(format!("   {:<18} {:<10} Vendor\n", "Identifier", "Dist")),
+        Print(format!("   {}\n", "-".repeat(54)))
+    )?;
+    for (index, version) in versions.iter().enumerate() {
+        if index == selected {
+            execute!(out, SetAttribute(Attribute::Reverse), Print(" > "))?;
+        } else {
+            execute!(out, Print("   "))?;
+        }
+        execute!(
+            out,
+            Print(format!(
+                "{:<18} {:<10} {}\n",
+                version.value,
+                version.distribution.as_deref().unwrap_or(""),
+                version.vendor.as_deref().unwrap_or("")
+            ))
+        )?;
+        if index == selected {
+            execute!(out, SetAttribute(Attribute::Reset))?;
+        }
+    }
+    execute!(
+        out,
+        Print("\n Up/Down to move, Enter to select, Esc/q to cancel.")
+    )?;
+    out.flush()?;
+    Ok(())
+}
+
+struct TerminalMode;
+
+impl TerminalMode {
+    fn enter() -> Result<Self> {
+        terminal::enable_raw_mode()?;
+        execute!(io::stdout(), EnterAlternateScreen, cursor::Hide)?;
+        Ok(Self)
+    }
+}
+
+impl Drop for TerminalMode {
+    fn drop(&mut self) {
+        let _ = execute!(io::stdout(), cursor::Show, LeaveAlternateScreen);
+        let _ = terminal::disable_raw_mode();
+    }
 }
 
 fn should_set_default(config: &Config) -> Result<bool> {
@@ -377,14 +502,15 @@ fn should_set_default(config: &Config) -> Result<bool> {
     Ok(answer.trim().is_empty() || answer.trim().eq_ignore_ascii_case("y"))
 }
 
-fn uninstall(state: &State, candidate: &str, version: &str) -> Result<()> {
+fn uninstall(state: &State, candidate: &str, version: Option<String>) -> Result<()> {
     state.init()?;
+    let version = resolve_installed_version(state, candidate, version.as_deref())?;
     let record = state
-        .install_record(candidate, version)?
+        .install_record(candidate, &version)?
         .context("version is not installed")?;
-    let version_dir = state.version_dir(candidate, version);
+    let version_dir = state.version_dir(candidate, &version);
     if record.local {
-        fs::remove_file(state.record_path(candidate, version)).ok();
+        fs::remove_file(state.record_path(candidate, &version)).ok();
         if version_dir.exists() {
             fs::remove_dir(version_dir).ok();
         }
@@ -401,10 +527,16 @@ fn uninstall(state: &State, candidate: &str, version: &str) -> Result<()> {
     Ok(())
 }
 
-fn use_version(state: &State, candidate: &str, version: &str, emit: EmitMode) -> Result<()> {
+fn use_version(
+    state: &State,
+    candidate: &str,
+    version: Option<String>,
+    emit: EmitMode,
+) -> Result<()> {
     state.init()?;
+    let version = resolve_installed_version(state, candidate, version.as_deref())?;
     let record = state
-        .install_record(candidate, version)?
+        .install_record(candidate, &version)?
         .context("version is not installed")?;
     let bin = record.path.join("bin");
     if emit != EmitMode::None {
@@ -434,10 +566,40 @@ fn use_version(state: &State, candidate: &str, version: &str, emit: EmitMode) ->
     Ok(())
 }
 
-fn default_version(state: &State, candidate: &str, version: &str) -> Result<()> {
+fn resolve_installed_version(
+    state: &State,
+    candidate: &str,
+    requested: Option<&str>,
+) -> Result<String> {
+    if let Some(requested) = requested {
+        if state.install_record(candidate, requested)?.is_some() {
+            return Ok(requested.to_string());
+        }
+    }
+
+    let versions = state
+        .installed_versions(candidate)?
+        .into_iter()
+        .filter(|version| requested.is_none_or(|requested| version.starts_with(requested)))
+        .map(Version::local)
+        .collect::<Vec<_>>();
+
+    match versions.len() {
+        0 => match requested {
+            Some(requested) => bail!("{candidate} {requested} is not installed"),
+            None => bail!("no installed {candidate} versions"),
+        },
+        1 => Ok(versions[0].value.clone()),
+        _ if state.config.auto_answer => Ok(versions[0].value.clone()),
+        _ => select_version(candidate, requested.unwrap_or("installed"), &versions),
+    }
+}
+
+fn default_version(state: &State, candidate: &str, version: Option<String>) -> Result<()> {
     state.init()?;
+    let version = resolve_installed_version(state, candidate, version.as_deref())?;
     let record = state
-        .install_record(candidate, version)?
+        .install_record(candidate, &version)?
         .context("version is not installed")?;
     fslink::replace_dir_link(&state.current_link(candidate), &record.path)?;
     shims::regenerate(state)?;
@@ -811,5 +973,32 @@ mod tests {
         let version = resolve_install_version(&state, "java", "25").unwrap();
 
         assert_eq!(version, "25.0.3-tem");
+    }
+
+    #[test]
+    fn missing_installed_version_resolves_single_installed_version() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir_all(root.path().join("candidates").join("java").join("21-local")).unwrap();
+        let state = State {
+            root: root.path().to_path_buf(),
+            config: Config::default(),
+        };
+
+        let version = resolve_installed_version(&state, "java", None).unwrap();
+
+        assert_eq!(version, "21-local");
+    }
+
+    #[test]
+    fn missing_installed_version_fails_when_none_are_installed() {
+        let root = TempDir::new().unwrap();
+        let state = State {
+            root: root.path().to_path_buf(),
+            config: Config::default(),
+        };
+
+        let error = resolve_installed_version(&state, "java", None).unwrap_err();
+
+        assert!(error.to_string().contains("no installed java versions"));
     }
 }

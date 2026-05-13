@@ -22,13 +22,24 @@ if ($currentPath) {
     [Environment]::SetEnvironmentVariable("Path", ($parts -join ';'), "User")
 }
 
-if (!$SkipProfileUpdate -and (Test-Path $PROFILE)) {
-    $profileText = Get-Content -Raw $PROFILE
-    $escapedCompletionScript = [regex]::Escape($completionScript)
-    $pattern = "(?m)^\s*# SDKMAN for Windows completions\r?\n\s*\.\s+[`"']?$escapedCompletionScript[`"']?\s*\r?\n?"
-    $updatedProfileText = [regex]::Replace($profileText, $pattern, "")
-    if ($updatedProfileText -ne $profileText) {
-        Set-Content -Path $PROFILE -Value $updatedProfileText -NoNewline
+if (!$SkipProfileUpdate) {
+    $documents = [Environment]::GetFolderPath("MyDocuments")
+    $profiles = @(
+        $PROFILE,
+        (Join-Path $documents "PowerShell\profile.ps1"),
+        (Join-Path $documents "WindowsPowerShell\profile.ps1")
+    ) | Select-Object -Unique
+
+    foreach ($profilePath in $profiles) {
+        if (Test-Path $profilePath) {
+            $profileText = Get-Content -Raw $profilePath
+            $escapedCompletionScript = [regex]::Escape($completionScript)
+            $pattern = "(?m)^\s*# SDKMAN for Windows completions\r?\n\s*\.\s+[`"']?$escapedCompletionScript[`"']?\s*\r?\n?"
+            $updatedProfileText = [regex]::Replace($profileText, $pattern, "")
+            if ($updatedProfileText -ne $profileText) {
+                Set-Content -Path $profilePath -Value $updatedProfileText -NoNewline
+            }
+        }
     }
 }
 
