@@ -193,3 +193,82 @@ fn parse_versions(text: &str) -> Vec<Version> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_candidates_from_json_array_of_strings() {
+        let candidates = parse_candidates(r#"["java","maven"]"#);
+
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0].name, "java");
+        assert_eq!(candidates[0].description, "");
+        assert_eq!(candidates[1].name, "maven");
+    }
+
+    #[test]
+    fn parses_candidates_from_json_object_array() {
+        let candidates = parse_candidates(
+            r#"{"candidates":[{"candidate":"java","description":"JVMs"},{"name":"maven"}]}"#,
+        );
+
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0].name, "java");
+        assert_eq!(candidates[0].description, "JVMs");
+        assert_eq!(candidates[1].name, "maven");
+    }
+
+    #[test]
+    fn parses_candidates_from_line_based_fallbacks() {
+        let candidates = parse_candidates(
+            "java,Java runtimes\n{\"candidate\":\"maven\",\"description\":\"Build tool\"}\n",
+        );
+
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0].name, "java");
+        assert_eq!(candidates[0].description, "Java runtimes");
+        assert_eq!(candidates[1].name, "maven");
+        assert_eq!(candidates[1].description, "Build tool");
+    }
+
+    #[test]
+    fn parses_versions_from_json_array_of_strings() {
+        let versions = parse_versions(r#"["21.0.4-tem","17.0.12-tem"]"#);
+
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].value, "21.0.4-tem");
+        assert_eq!(versions[1].value, "17.0.12-tem");
+    }
+
+    #[test]
+    fn parses_versions_from_json_object_array() {
+        let versions = parse_versions(
+            r#"{"versions":[{"version":"21.0.4-tem"},{"candidateVersion":"17.0.12-tem"},{"id":"11.0.24-tem"}]}"#,
+        );
+
+        assert_eq!(versions.len(), 3);
+        assert_eq!(versions[0].value, "21.0.4-tem");
+        assert_eq!(versions[1].value, "17.0.12-tem");
+        assert_eq!(versions[2].value, "11.0.24-tem");
+    }
+
+    #[test]
+    fn parses_versions_from_delimited_fallbacks() {
+        let versions = parse_versions("21.0.4-tem,17.0.12-tem|11.0.24-tem");
+
+        assert_eq!(versions.len(), 3);
+        assert_eq!(versions[0].value, "21.0.4-tem");
+        assert_eq!(versions[1].value, "17.0.12-tem");
+        assert_eq!(versions[2].value, "11.0.24-tem");
+    }
+
+    #[test]
+    fn parsers_ignore_empty_and_malformed_input() {
+        assert!(parse_candidates("\n\n").is_empty());
+        assert!(parse_candidates(r#"{"unexpected":[]}"#).is_empty());
+        assert!(parse_versions("\n\n").is_empty());
+        assert!(parse_versions(r#"{"unexpected":[]}"#).is_empty());
+    }
+}

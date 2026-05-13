@@ -302,6 +302,8 @@ Verification:
 
 ### TASK-019: Improve API parse tests
 
+Status: Done.
+
 Problem: candidate and version parsers support multiple formats but are mostly untested.
 
 Work:
