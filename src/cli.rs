@@ -37,7 +37,11 @@ pub enum Command {
     List {
         #[arg(help = "Candidate to list versions for, for example java or maven")]
         candidate: Option<String>,
-        #[arg(long, value_enum, help = "Order versions by vendor then version; default desc (highest first)")]
+        #[arg(
+            long,
+            value_enum,
+            help = "Order versions by vendor then version; default desc (highest first)"
+        )]
         order: Option<Order>,
     },
     #[command(

@@ -554,10 +554,7 @@ fn select_version_interactive(
                     sort_versions_by_vendor_and_version(&mut versions_vec, order);
                     // Restore selected index to the same identifier if present
                     if let Some(id) = selected_id {
-                        selected = versions_vec
-                            .iter()
-                            .position(|v| v.value == id)
-                            .unwrap_or(0);
+                        selected = versions_vec.iter().position(|v| v.value == id).unwrap_or(0);
                     } else {
                         selected = 0;
                     }
