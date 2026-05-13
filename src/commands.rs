@@ -59,6 +59,14 @@ pub fn execute(args: Args, state: State) -> Result<()> {
         Command::Env { action } => env_cmd(&state, action, emit),
         Command::Offline { action } => offline(&state, action),
         Command::Update => update(&state),
+        Command::Upgrade => unsupported(
+            "upgrade",
+            "Automatic SDK upgrades are not implemented yet. Use `sdk install <candidate> <version>` and `sdk default <candidate> <version>` explicitly.",
+        ),
+        Command::Selfupdate => unsupported(
+            "selfupdate",
+            "Self-update is not implemented yet. Download a newer release artifact and run install.ps1 again.",
+        ),
         Command::Flush { target } => flush(&state, target.unwrap_or(FlushTarget::All)),
         Command::Config { action } => config(&state, action),
         Command::Version => version(),
@@ -854,6 +862,10 @@ fn update(state: &State) -> Result<()> {
     Ok(())
 }
 
+fn unsupported(command: &str, guidance: &str) -> Result<()> {
+    bail!("sdk {command} is not supported yet. {guidance}")
+}
+
 fn flush(state: &State, target: FlushTarget) -> Result<()> {
     state.init()?;
     let targets = match target {
@@ -1034,6 +1046,8 @@ const COMMANDS: &[&str] = &[
     "env",
     "offline",
     "update",
+    "upgrade",
+    "selfupdate",
     "flush",
     "config",
     "version",

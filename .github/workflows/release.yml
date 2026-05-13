@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Build Windows artifact
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain components
+        run: rustup component add rustfmt clippy
+
+      - name: Verify formatting
+        run: cargo fmt --check
+
+      - name: Run tests
+        run: cargo test
+
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Assemble package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME } else { "manual-$env:GITHUB_RUN_NUMBER" }
+          $packageName = "sdkman-windows-$version"
+          $staging = Join-Path $PWD "dist\$packageName"
+          New-Item -ItemType Directory -Force -Path $staging, (Join-Path $staging "scripts"), (Join-Path $staging "target\release") | Out-Null
+
+          Copy-Item -LiteralPath "target\release\sdk.exe" -Destination (Join-Path $staging "target\release\sdk.exe")
+          Copy-Item -LiteralPath "install.ps1" -Destination $staging
+          Copy-Item -LiteralPath "uninstall.ps1" -Destination $staging
+          Copy-Item -LiteralPath "README.md" -Destination $staging
+          Copy-Item -LiteralPath "Cargo.toml" -Destination $staging
+          Copy-Item -LiteralPath "Cargo.lock" -Destination $staging
+          Copy-Item -LiteralPath "scripts\sdk.ps1" -Destination (Join-Path $staging "scripts")
+          Copy-Item -LiteralPath "scripts\sdk.cmd" -Destination (Join-Path $staging "scripts")
+          Copy-Item -LiteralPath "scripts\sdk-completion.ps1" -Destination (Join-Path $staging "scripts")
+
+          $zip = Join-Path $PWD "dist\$packageName.zip"
+          Compress-Archive -Path (Join-Path $staging "*") -DestinationPath $zip -Force
+          $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $zip
+          "$($hash.Hash.ToLowerInvariant())  $(Split-Path -Leaf $zip)" | Set-Content -NoNewline -Path "$zip.sha256"
+
+          "PACKAGE_ZIP=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PACKAGE_SHA=$zip.sha256" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Smoke test packaged install
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $installDir = Join-Path $env:RUNNER_TEMP "sdkman-windows-smoke"
+          $sdkExe = Join-Path $PWD "target\release\sdk.exe"
+          ./install.ps1 -SdkExe $sdkExe -InstallDir $installDir -PathScope Process -SkipProfileUpdate -SkipLocalSdkDiscovery
+          & (Join-Path $installDir "bin\sdk.exe") version
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdkman-windows
+          path: |
+            ${{ env.PACKAGE_ZIP }}
+            ${{ env.PACKAGE_SHA }}
+
+      - name: Publish GitHub release assets
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.PACKAGE_ZIP }}
+            ${{ env.PACKAGE_SHA }}

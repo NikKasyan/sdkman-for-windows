@@ -498,6 +498,35 @@ fn offline_mode_allows_local_workflows_and_blocks_network_workflows() {
         ));
 }
 
+#[test]
+fn upgrade_and_selfupdate_fail_with_friendly_messages() {
+    let temp = TempDir::new().unwrap();
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .arg("upgrade")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "sdk upgrade is not supported yet",
+        ))
+        .stderr(predicates::str::contains(
+            "sdk install <candidate> <version>",
+        ));
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .arg("selfupdate")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "sdk selfupdate is not supported yet",
+        ))
+        .stderr(predicates::str::contains("install.ps1"));
+}
+
 #[cfg(windows)]
 #[test]
 fn default_regenerates_shims_idempotently_and_removes_stale_shims() {

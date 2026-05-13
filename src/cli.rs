@@ -137,6 +137,18 @@ pub enum Command {
     )]
     Update,
     #[command(
+        about = "Report that SDK upgrades are not implemented yet",
+        long_about = "Report that SDK upgrades are not implemented yet.\n\nSDKMAN for Windows can install, switch, and uninstall versions, but automatic upgrade selection is not implemented yet.",
+        after_help = "Examples:\n  sdk upgrade"
+    )]
+    Upgrade,
+    #[command(
+        about = "Report that self-update is not implemented yet",
+        long_about = "Report that self-update is not implemented yet.\n\nInstall a newer SDKMAN for Windows release by downloading the release artifact and running install.ps1 again.",
+        after_help = "Examples:\n  sdk selfupdate"
+    )]
+    Selfupdate,
+    #[command(
         about = "Remove cached downloads, temporary files, or metadata",
         long_about = "Remove cached downloads, temporary files, metadata, or all of them.\n\nUse this when a download cache, extraction work directory, or cached candidate metadata should be rebuilt. It does not remove installed SDK versions.",
         after_help = "Examples:\n  sdk flush tmp\n  sdk flush metadata\n  sdk flush archives\n  sdk flush all"
@@ -224,6 +236,8 @@ const COMMAND_GUIDE: &str = "Command guide:
   env        Create, apply, or remove project .sdkmanrc files.
   offline    Toggle network-free mode.
   update     Refresh cached SDKMAN candidate/version metadata.
+  upgrade    Not implemented yet; use install/default explicitly.
+  selfupdate Not implemented yet; reinstall a release artifact.
   flush      Clear archives, temporary files, metadata, or all caches.
   config     Show or update SDKMAN for Windows configuration.
   version    Print version information.
@@ -249,6 +263,8 @@ pub fn examples_for(command: &str, subcommand: Option<&str>) -> Option<&'static 
         ("env", _) => Some("Examples:\n  sdk env init\n  sdk env install\n  sdk env clear"),
         ("offline", _) => Some("Examples:\n  sdk offline enable\n  sdk offline disable"),
         ("update", _) => Some("Examples:\n  sdk update"),
+        ("upgrade", _) => Some("Examples:\n  sdk upgrade"),
+        ("selfupdate", _) => Some("Examples:\n  sdk selfupdate"),
         ("flush", _) => {
             Some("Examples:\n  sdk flush tmp\n  sdk flush metadata\n  sdk flush archives\n  sdk flush all")
         }
