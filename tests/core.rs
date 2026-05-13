@@ -21,7 +21,11 @@ fn no_args_prints_clap_help() {
         .assert()
         .success()
         .stdout(predicates::str::contains("SDKMAN for native Windows"))
-        .stdout(predicates::str::contains("Usage: sdk"));
+        .stdout(predicates::str::contains("Usage: sdk"))
+        .stdout(predicates::str::contains("Examples:"))
+        .stdout(predicates::str::contains(
+            "sdk config set sdkman_auto_answer true",
+        ));
 }
 
 #[test]
@@ -34,7 +38,9 @@ fn help_prints_command_specific_help() {
         .assert()
         .success()
         .stdout(predicates::str::contains("install <CANDIDATE>"))
-        .stdout(predicates::str::contains("<CANDIDATE>"));
+        .stdout(predicates::str::contains("<CANDIDATE>"))
+        .stdout(predicates::str::contains("Examples:"))
+        .stdout(predicates::str::contains("sdk install java 21.0.4-tem"));
 
     Command::cargo_bin("sdk")
         .unwrap()
@@ -43,7 +49,22 @@ fn help_prints_command_specific_help() {
         .assert()
         .success()
         .stdout(predicates::str::contains("config"))
-        .stdout(predicates::str::contains("set"));
+        .stdout(predicates::str::contains("set"))
+        .stdout(predicates::str::contains(
+            "sdk config set sdkman_curl_max_time 12",
+        ));
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .args(["help", "config", "set"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("sdkman_auto_answer"))
+        .stdout(predicates::str::contains("Examples:"))
+        .stdout(predicates::str::contains(
+            "sdk config set sdkman_offline_mode false",
+        ));
 }
 
 #[test]
