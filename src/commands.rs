@@ -52,6 +52,7 @@ pub fn execute(args: Args, state: State) -> Result<()> {
         Command::Flush { target } => flush(&state, target.unwrap_or(FlushTarget::All)),
         Command::Config { action } => config(&state, action),
         Command::Version => version(),
+        Command::Complete { words } => complete(&state, &words),
     }
 }
 
@@ -245,8 +246,12 @@ fn install(
     local_path: Option<PathBuf>,
 ) -> Result<()> {
     state.init()?;
+    if local_path.is_none() && state.config.offline_mode {
+        bail!("install requires network while offline mode is enabled");
+    }
     let version = match version {
-        Some(version) => version,
+        Some(version) if local_path.is_some() => version,
+        Some(version) => resolve_install_version(state, candidate, &version)?,
         None => Api::new(state)?
             .versions(candidate, state.config.offline_mode)?
             .first()
@@ -270,9 +275,6 @@ fn install(
         state.write_record(&record)?;
         println!("Registered {candidate} {version} as local install.");
     } else {
-        if state.config.offline_mode {
-            bail!("install requires network while offline mode is enabled");
-        }
         let api = Api::new(state)?;
         let client = Client::builder().build()?;
         let archive_name = format!("{candidate}-{version}.zip");
@@ -300,6 +302,68 @@ fn install(
         default_version(state, candidate, &version)?;
     }
     Ok(())
+}
+
+fn resolve_install_version(state: &State, candidate: &str, requested: &str) -> Result<String> {
+    let api = Api::new(state)?;
+    let versions = api.versions(candidate, state.config.offline_mode)?;
+    if versions.iter().any(|version| version.value == requested) {
+        return Ok(requested.to_string());
+    }
+
+    let matches = versions
+        .into_iter()
+        .filter(|version| version_matches_prefix(version, requested))
+        .collect::<Vec<_>>();
+    match matches.len() {
+        0 => bail!("no {candidate} version matches '{requested}'"),
+        1 => Ok(matches[0].value.clone()),
+        _ if state.config.auto_answer => Ok(matches[0].value.clone()),
+        _ => select_version(candidate, requested, &matches),
+    }
+}
+
+fn version_matches_prefix(version: &Version, prefix: &str) -> bool {
+    version.value.starts_with(prefix)
+        || version
+            .display_version
+            .as_deref()
+            .is_some_and(|display| display.starts_with(prefix))
+}
+
+fn select_version(candidate: &str, requested: &str, versions: &[Version]) -> Result<String> {
+    println!("Multiple {candidate} versions match '{requested}':");
+    for (index, version) in versions.iter().enumerate() {
+        println!("{:>3}) {}", index + 1, format_version_choice(version));
+    }
+    print!("Select version (1-{}): ", versions.len());
+    io::stdout().flush()?;
+
+    let mut answer = String::new();
+    io::stdin().read_line(&mut answer)?;
+    let choice = answer
+        .trim()
+        .parse::<usize>()
+        .context("selection must be a number")?;
+    if choice == 0 || choice > versions.len() {
+        bail!("selection must be between 1 and {}", versions.len());
+    }
+    Ok(versions[choice - 1].value.clone())
+}
+
+fn format_version_choice(version: &Version) -> String {
+    let mut text = version.value.clone();
+    if let Some(vendor) = &version.vendor {
+        text.push_str("  ");
+        text.push_str(vendor);
+    }
+    if let Some(display_version) = &version.display_version {
+        if display_version != &version.value {
+            text.push_str("  ");
+            text.push_str(display_version);
+        }
+    }
+    text
 }
 
 fn should_set_default(config: &Config) -> Result<bool> {
@@ -545,11 +609,167 @@ fn config(state: &State, action: Option<ConfigAction>) -> Result<()> {
     Ok(())
 }
 
+fn complete(state: &State, words: &[String]) -> Result<()> {
+    for item in completions(state, words) {
+        println!("{item}");
+    }
+    Ok(())
+}
+
+fn completions(state: &State, words: &[String]) -> Vec<String> {
+    let words = trim_command_name(words);
+    let command = words.first().map(String::as_str).unwrap_or_default();
+    if words.len() <= 1 {
+        return matching(COMMANDS, command);
+    }
+
+    let current = words.last().map(String::as_str).unwrap_or_default();
+    match command {
+        "install" => complete_install(state, words, current),
+        "use" | "default" | "uninstall" | "rm" | "home" => {
+            complete_installed_version_command(state, words, current)
+        }
+        "list" | "current" => complete_candidate(state, current, false),
+        "flush" => matching(&["archives", "tmp", "metadata", "all"], current),
+        "offline" => matching(&["enable", "disable"], current),
+        "env" => matching(&["init", "install", "clear"], current),
+        "config" => complete_config(words, current),
+        _ => Vec::new(),
+    }
+}
+
+fn trim_command_name(words: &[String]) -> &[String] {
+    if words
+        .first()
+        .and_then(|word| Path::new(word).file_stem())
+        .and_then(|stem| stem.to_str())
+        .is_some_and(|stem| stem.eq_ignore_ascii_case("sdk"))
+    {
+        &words[1..]
+    } else {
+        words
+    }
+}
+
+fn complete_install(state: &State, words: &[String], current: &str) -> Vec<String> {
+    match words.len() {
+        2 => complete_candidate(state, current, true),
+        3 => words
+            .get(1)
+            .map(|candidate| complete_install_versions(state, candidate, current))
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+fn complete_installed_version_command(
+    state: &State,
+    words: &[String],
+    current: &str,
+) -> Vec<String> {
+    match words.len() {
+        2 => complete_candidate(state, current, false),
+        3 => words
+            .get(1)
+            .map(|candidate| complete_installed_versions(state, candidate, current))
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+fn complete_candidate(state: &State, prefix: &str, include_remote: bool) -> Vec<String> {
+    let mut candidates = state.installed_candidates().unwrap_or_default();
+    if include_remote && !state.config.offline_mode {
+        if let Ok(remote) = Api::new(state).and_then(|api| api.candidates(false)) {
+            candidates.extend(remote.into_iter().map(|candidate| candidate.name));
+        }
+    }
+    candidates.sort();
+    candidates.dedup();
+    matching_owned(candidates, prefix)
+}
+
+fn complete_install_versions(state: &State, candidate: &str, prefix: &str) -> Vec<String> {
+    Api::new(state)
+        .and_then(|api| api.versions(candidate, state.config.offline_mode))
+        .map(|versions| {
+            matching_owned(
+                versions
+                    .into_iter()
+                    .map(|version| version.value)
+                    .collect::<Vec<_>>(),
+                prefix,
+            )
+        })
+        .unwrap_or_else(|_| complete_installed_versions(state, candidate, prefix))
+}
+
+fn complete_installed_versions(state: &State, candidate: &str, prefix: &str) -> Vec<String> {
+    matching_owned(
+        state.installed_versions(candidate).unwrap_or_default(),
+        prefix,
+    )
+}
+
+fn complete_config(words: &[String], current: &str) -> Vec<String> {
+    match words.len() {
+        2 => matching(&["set"], current),
+        3 if words.get(1).is_some_and(|word| word == "set") => matching(CONFIG_KEYS, current),
+        _ => Vec::new(),
+    }
+}
+
+fn matching(values: &[&str], prefix: &str) -> Vec<String> {
+    matching_owned(
+        values.iter().map(|value| (*value).to_string()).collect(),
+        prefix,
+    )
+}
+
+fn matching_owned(mut values: Vec<String>, prefix: &str) -> Vec<String> {
+    values.sort();
+    values.dedup();
+    values
+        .into_iter()
+        .filter(|value| value.starts_with(prefix))
+        .collect()
+}
+
 fn version() -> Result<()> {
     println!("SDKMAN for Windows");
     println!("native: {}", env!("CARGO_PKG_VERSION"));
     Ok(())
 }
+
+const COMMANDS: &[&str] = &[
+    "init",
+    "list",
+    "install",
+    "uninstall",
+    "rm",
+    "use",
+    "default",
+    "current",
+    "home",
+    "env",
+    "offline",
+    "update",
+    "flush",
+    "config",
+    "version",
+];
+
+const CONFIG_KEYS: &[&str] = &[
+    "sdkman_auto_answer",
+    "sdkman_insecure_ssl",
+    "sdkman_curl_connect_timeout",
+    "sdkman_curl_max_time",
+    "sdkman_colour_enable",
+    "sdkman_debug_mode",
+    "sdkman_healthcheck_enable",
+    "sdkman_auto_env",
+    "sdkman_offline_mode",
+];
 
 #[cfg(test)]
 mod tests {
@@ -566,5 +786,30 @@ mod tests {
         let parent_relative = root.path().join("a").join("..").join("a").join("b");
 
         assert!(paths_match(&direct, &parent_relative));
+    }
+
+    #[test]
+    fn partial_install_version_resolves_from_cached_versions() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir_all(root.path().join("var").join("metadata")).unwrap();
+        fs::write(
+            root.path()
+                .join("var")
+                .join("metadata")
+                .join("java-versions.txt"),
+            "25.0.3-tem,21.0.11-tem",
+        )
+        .unwrap();
+        let state = State {
+            root: root.path().to_path_buf(),
+            config: Config {
+                offline_mode: true,
+                ..Config::default()
+            },
+        };
+
+        let version = resolve_install_version(&state, "java", "25").unwrap();
+
+        assert_eq!(version, "25.0.3-tem");
     }
 }

@@ -158,6 +158,11 @@ pub enum Command {
         after_help = "Examples:\n  sdk version"
     )]
     Version,
+    #[command(hide = true)]
+    Complete {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        words: Vec<String>,
+    },
 }
 
 #[derive(Clone, Debug, ValueEnum)]

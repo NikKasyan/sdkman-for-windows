@@ -210,6 +210,57 @@ fn config_set_rejects_invalid_value() {
         ));
 }
 
+#[test]
+fn complete_use_versions_from_installed_versions() {
+    let temp = TempDir::new().unwrap();
+    fs::create_dir_all(temp.path().join("candidates").join("java").join("21-local")).unwrap();
+    fs::create_dir_all(
+        temp.path()
+            .join("candidates")
+            .join("java")
+            .join("25.0.3-tem"),
+    )
+    .unwrap();
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .args(["complete", "use", "java", "2"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("21-local"))
+        .stdout(predicates::str::contains("25.0.3-tem"));
+}
+
+#[test]
+fn complete_install_versions_uses_offline_metadata_cache() {
+    let temp = TempDir::new().unwrap();
+    fs::create_dir_all(temp.path().join("etc")).unwrap();
+    fs::create_dir_all(temp.path().join("var").join("metadata")).unwrap();
+    fs::write(
+        temp.path().join("etc").join("config"),
+        "sdkman_offline_mode=true\n",
+    )
+    .unwrap();
+    fs::write(
+        temp.path()
+            .join("var")
+            .join("metadata")
+            .join("java-versions.txt"),
+        "25.0.3-tem,21.0.11-tem,17.0.19-tem",
+    )
+    .unwrap();
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .args(["complete", "install", "java", "25"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("25.0.3-tem"))
+        .stdout(predicates::str::contains("21.0.11-tem").not());
+}
+
 #[cfg(windows)]
 fn create_fake_sdk(command_name: &str) -> TempDir {
     create_fake_sdk_with_marker(command_name, "local-sdk")
