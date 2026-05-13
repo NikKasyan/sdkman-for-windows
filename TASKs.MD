@@ -586,6 +586,8 @@ Verification:
 
 ### TASK-039: Add end-to-end local install workflow test
 
+Status: Done.
+
 Problem: core non-network workflow should be proven without SDKMAN API access.
 
 Work:
