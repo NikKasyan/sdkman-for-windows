@@ -70,6 +70,8 @@ This makes `sdk` resolve to the shell wrapper before the raw `sdk.exe`, and make
 
 The installer also registers PowerShell tab completion in the current user's Windows PowerShell and PowerShell profile paths. Completion suggests install versions from SDKMAN metadata, respecting offline mode and cached metadata, and suggests `use` versions from currently installed versions only. Pass `-SkipProfileUpdate` to `install.ps1` if you do not want the installer to edit your PowerShell profiles.
 
+During installation, the installer also looks for existing Java, Maven, Gradle, and Kotlin SDKs in common environment variables and Windows install directories. Any directory that looks like an SDK home is registered as a local install, for example `java 21.0.4-tem-local`, `maven 3.9.9-local`, `gradle 8.7-local`, or `kotlin 2.0.0-local`, without copying or taking ownership of those files. Pass `-SkipLocalSdkDiscovery` to leave existing local SDKs unregistered.
+
 If tab completion falls back to directory names, reload your profile or dot-source the completion script manually:
 
 ```powershell

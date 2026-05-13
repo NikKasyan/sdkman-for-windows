@@ -229,7 +229,7 @@ mod windows {
         let existing_text = existing_dir.path().display().to_string();
 
         let command = format!(
-            "$env:Path = {existing}; & {script} -SdkExe {sdk_exe} -InstallDir {install_dir} -PathScope Process -SkipProfileUpdate; & {script} -SdkExe {sdk_exe} -InstallDir {install_dir} -PathScope Process -SkipProfileUpdate; 'PATH_MARKER=' + [Environment]::GetEnvironmentVariable('Path', 'Process')",
+            "$env:Path = {existing}; & {script} -SdkExe {sdk_exe} -InstallDir {install_dir} -PathScope Process -SkipProfileUpdate -SkipLocalSdkDiscovery; & {script} -SdkExe {sdk_exe} -InstallDir {install_dir} -PathScope Process -SkipProfileUpdate -SkipLocalSdkDiscovery; 'PATH_MARKER=' + [Environment]::GetEnvironmentVariable('Path', 'Process')",
             existing = ps_quote(&format!("{existing_text};{bin_dir};{script_dir}\\;{existing_text}")),
             script = ps_quote(&script),
             sdk_exe = ps_quote(&sdk_exe),
@@ -301,7 +301,7 @@ mod windows {
         .unwrap();
 
         let command = format!(
-            "$env:Path = {existing}; & {install_script} -SdkExe {sdk_exe} -InstallDir {install_dir} -PathScope Process -SkipProfileUpdate; Set-Content -Path {shim_file} -Value '@echo off'; & {uninstall_script} -InstallDir {install_dir} -PathScope Process -SkipProfileUpdate; 'PATH_MARKER=' + [Environment]::GetEnvironmentVariable('Path', 'Process')",
+            "$env:Path = {existing}; & {install_script} -SdkExe {sdk_exe} -InstallDir {install_dir} -PathScope Process -SkipProfileUpdate -SkipLocalSdkDiscovery; Set-Content -Path {shim_file} -Value '@echo off'; & {uninstall_script} -InstallDir {install_dir} -PathScope Process -SkipProfileUpdate; 'PATH_MARKER=' + [Environment]::GetEnvironmentVariable('Path', 'Process')",
             existing = ps_quote(&existing_text),
             install_script = ps_quote(&install_script),
             uninstall_script = ps_quote(&uninstall_script),
@@ -346,5 +346,100 @@ mod windows {
             .join("java")
             .join("keep.txt")
             .exists());
+    }
+
+    #[test]
+    fn installer_registers_existing_sdk_homes_as_local_installs() {
+        let install_dir = temp_dir();
+        let java_home = temp_dir();
+        let java_bin = java_home.path().join("bin");
+        fs::create_dir_all(&java_bin).unwrap();
+        fs::write(java_bin.join("java.exe"), "").unwrap();
+        fs::write(
+            java_home.path().join("release"),
+            "JAVA_VERSION=\"21.0.4\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n",
+        )
+        .unwrap();
+        let maven_parent = temp_dir();
+        let maven_home = maven_parent.path().join("apache-maven-3.9.9");
+        let maven_bin = maven_home.join("bin");
+        fs::create_dir_all(&maven_bin).unwrap();
+        fs::write(maven_bin.join("mvn.cmd"), "").unwrap();
+        let gradle_parent = temp_dir();
+        let gradle_home = gradle_parent.path().join("gradle-8.7");
+        let gradle_bin = gradle_home.join("bin");
+        fs::create_dir_all(&gradle_bin).unwrap();
+        fs::write(gradle_bin.join("gradle.bat"), "").unwrap();
+        let kotlin_parent = temp_dir();
+        let kotlin_home = kotlin_parent.path().join("kotlin-2.0.0");
+        let kotlin_bin = kotlin_home.join("bin");
+        fs::create_dir_all(&kotlin_bin).unwrap();
+        fs::write(kotlin_bin.join("kotlinc.bat"), "").unwrap();
+
+        let sdk_exe = cargo_bin("sdk").display().to_string();
+        let script = repo_path("install.ps1");
+        let install_text = install_dir.path().display().to_string();
+        let java_home_text = java_home.path().display().to_string();
+        let maven_home_text = maven_home.display().to_string();
+        let gradle_home_text = gradle_home.display().to_string();
+        let kotlin_home_text = kotlin_home.display().to_string();
+
+        let command = format!(
+            "$env:JAVA_HOME = {java_home}; $env:MAVEN_HOME = {maven_home}; $env:GRADLE_HOME = {gradle_home}; $env:KOTLIN_HOME = {kotlin_home}; & {script} -SdkExe {sdk_exe} -InstallDir {install_dir} -PathScope Process -SkipProfileUpdate",
+            java_home = ps_quote(&java_home_text),
+            maven_home = ps_quote(&maven_home_text),
+            gradle_home = ps_quote(&gradle_home_text),
+            kotlin_home = ps_quote(&kotlin_home_text),
+            script = ps_quote(&script),
+            sdk_exe = ps_quote(&sdk_exe),
+            install_dir = ps_quote(&install_text),
+        );
+
+        let output = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                &command,
+            ])
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        assert_local_record(
+            install_dir.path(),
+            "java",
+            "21.0.4-tem-local",
+            &java_home_text,
+        );
+        assert_local_record(install_dir.path(), "maven", "3.9.9-local", &maven_home_text);
+        assert_local_record(install_dir.path(), "gradle", "8.7-local", &gradle_home_text);
+        assert_local_record(
+            install_dir.path(),
+            "kotlin",
+            "2.0.0-local",
+            &kotlin_home_text,
+        );
+    }
+
+    fn assert_local_record(root: &Path, candidate: &str, version: &str, home: &str) {
+        let record_path = root
+            .join("candidates")
+            .join(candidate)
+            .join(version)
+            .join(".sdkman-windows.json");
+        let record = fs::read_to_string(record_path).unwrap();
+
+        assert!(record.contains(&format!("\"candidate\": \"{candidate}\"")));
+        assert!(record.contains(&format!("\"version\": \"{version}\"")));
+        assert!(record.contains("\"local\": true"));
+        assert!(record.contains(&home.replace('\\', "\\\\")));
     }
 }
