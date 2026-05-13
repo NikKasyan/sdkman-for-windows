@@ -75,6 +75,8 @@ fn write_ps1_shim(shim_dir: &Path, name: &str, target: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
+    use std::process::Command;
     use tempfile::TempDir;
 
     #[test]
@@ -132,5 +134,69 @@ mod tests {
         assert_eq!(shim_names.len(), 2);
         assert!(shim_names.contains(&"java.cmd".to_string()));
         assert!(shim_names.contains(&"java.ps1".to_string()));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cmd_shim_preserves_arguments_with_spaces() {
+        let temp = TempDir::new().unwrap();
+        let target = temp.path().join("target.cmd");
+        let shim = temp.path().join("sample.cmd");
+        fs::write(&target, "@echo off\r\necho %~1^|%~2\r\n").unwrap();
+        write_cmd_shim(temp.path(), "sample", &target).unwrap();
+
+        let output = Command::new("cmd")
+            .args(["/C", shim.to_str().unwrap(), "hello world", "plain"])
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            "hello world|plain"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn powershell_shim_preserves_arguments_with_spaces() {
+        let temp = TempDir::new().unwrap();
+        let target = temp.path().join("target.ps1");
+        let shim = temp.path().join("sample.ps1");
+        fs::write(
+            &target,
+            "param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest)\n$Rest -join '|'\n",
+        )
+        .unwrap();
+        write_ps1_shim(temp.path(), "sample", &target).unwrap();
+
+        let output = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                shim.to_str().unwrap(),
+                "hello world",
+                "plain",
+            ])
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            "hello world|plain"
+        );
     }
 }

@@ -410,6 +410,8 @@ Verification:
 
 ### TASK-026: Preserve command arguments through shims
 
+Status: Done.
+
 Problem: shims need to forward arguments exactly.
 
 Work:
