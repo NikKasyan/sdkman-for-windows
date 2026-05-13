@@ -26,19 +26,28 @@ fn create_dir_link(link: &Path, target: &Path) -> Result<()> {
     if symlink_dir(target, link).is_ok() {
         return Ok(());
     }
-    let status = Command::new("cmd")
+    let output = Command::new("cmd")
         .args(["/C", "mklink", "/J"])
         .arg(link)
         .arg(target)
-        .status()?;
-    if status.success() {
+        .output()?;
+    if output.status.success() {
         Ok(())
     } else {
-        anyhow::bail!(
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut message = format!(
             "failed to create link {} -> {}",
             link.display(),
             target.display()
-        )
+        );
+        if !stdout.trim().is_empty() {
+            message.push_str(&format!("\nstdout: {}", stdout.trim()));
+        }
+        if !stderr.trim().is_empty() {
+            message.push_str(&format!("\nstderr: {}", stderr.trim()));
+        }
+        anyhow::bail!(message)
     }
 }
 

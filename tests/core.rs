@@ -252,7 +252,11 @@ fn local_install_default_shim_and_uninstall_workflow() {
         .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
         .args(["default", "sample", "1.0-local"])
         .assert()
-        .success();
+        .success()
+        .stdout(predicates::str::contains(
+            "Default sample version set to 1.0-local.",
+        ))
+        .stdout(predicates::str::contains("Junction created").not());
 
     let shim = sdkman_home.path().join("shims").join("sample.cmd");
     assert!(shim.exists());
