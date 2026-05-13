@@ -122,6 +122,8 @@ Verification:
 
 ### TASK-007: Make `sdk help` output command-specific help
 
+Status: Done.
+
 Problem: no-arg help is hand-written and does not expose Clap's command details.
 
 Work:

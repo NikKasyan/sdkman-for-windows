@@ -13,6 +13,40 @@ fn version_prints() {
 }
 
 #[test]
+fn no_args_prints_clap_help() {
+    let temp = TempDir::new().unwrap();
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("SDKMAN for native Windows"))
+        .stdout(predicates::str::contains("Usage: sdk"));
+}
+
+#[test]
+fn help_prints_command_specific_help() {
+    let temp = TempDir::new().unwrap();
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .args(["help", "install"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("install <CANDIDATE>"))
+        .stdout(predicates::str::contains("<CANDIDATE>"));
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .args(["help", "config"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("config"))
+        .stdout(predicates::str::contains("set"));
+}
+
+#[test]
 fn init_creates_layout() {
     let temp = TempDir::new().unwrap();
     let mut cmd = Command::cargo_bin("sdk").unwrap();

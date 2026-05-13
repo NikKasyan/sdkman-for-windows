@@ -2,7 +2,12 @@ use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
-#[command(name = "sdk", version, about = "SDKMAN for native Windows")]
+#[command(
+    name = "sdk",
+    version,
+    about = "SDKMAN for native Windows",
+    subcommand_required = false
+)]
 pub struct Args {
     #[arg(long, hide = true)]
     pub emit_env: bool,

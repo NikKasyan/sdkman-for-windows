@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use clap::CommandFactory;
 use reqwest::blocking::Client;
 use serde::Serialize;
 use std::{
@@ -28,7 +29,9 @@ struct EnvUpdate {
 pub fn execute(args: Args, state: State) -> Result<()> {
     let emit = EmitMode::from_args(args.emit_env, args.emit_cmd);
     let Some(command) = args.command else {
-        return help();
+        Args::command().print_help()?;
+        println!();
+        return Ok(());
     };
     match command {
         Command::Init => init(&state),
@@ -435,11 +438,5 @@ fn config(state: &State, action: Option<ConfigAction>) -> Result<()> {
 fn version() -> Result<()> {
     println!("SDKMAN for Windows");
     println!("native: {}", env!("CARGO_PKG_VERSION"));
-    Ok(())
-}
-
-fn help() -> Result<()> {
-    println!("SDKMAN for Windows");
-    println!("Commands: list, install, uninstall, use, default, current, home, env, offline, update, flush, config, version");
     Ok(())
 }
