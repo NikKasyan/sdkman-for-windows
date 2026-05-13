@@ -238,7 +238,9 @@ function Find-ExistingSdkHomes {
         }
 
         if ($hasExecutable) {
-            $resolvedHome
+            # TrimEnd prevents trailing backslash from escaping the closing quote
+            # when passed to native executables (PowerShell quoting bug).
+            $resolvedHome.TrimEnd('\', '/')
         }
     }
 }
