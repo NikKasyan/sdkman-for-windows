@@ -30,7 +30,44 @@ function Bump-Version([string]$ver, [string]$kind) {
 function Update-CargoTomlVersion([string]$new) {
     $path = 'Cargo.toml'
     $text = Get-Content -Raw $path
-    $updated = [regex]::Replace($text, 'version\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"', "version = \"$new\"")
+    $replacement = 'version = "' + $new + '"'
+    $updated = [regex]::Replace($text, 'version\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"', $replacement)
+    if ($text -eq $updated) { throw 'Failed to update Cargo.toml version' }
+    Set-Content -LiteralPath $path -Value $updated -Encoding UTF8
+param(
+    [string]$Version,
+    [ValidateSet("patch","minor","major")]
+    [string]$Bump = "patch",
+    [switch]$Force
+)
+
+Set-StrictMode -Version Latest
+
+function Get-CurrentVersion {
+    $toml = Get-Content -Raw Cargo.toml
+    if ($toml -match 'version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"') {
+        return $Matches[1]
+    }
+    throw 'Could not find version in Cargo.toml'
+}
+
+function Bump-Version([string]$ver, [string]$kind) {
+    $parts = $ver.Split('.') | ForEach-Object { [int]$_ }
+    if ($parts.Count -ne 3) { throw 'Version must be semver X.Y.Z' }
+    switch ($kind) {
+        'patch' { $parts[2] += 1 }
+        'minor' { $parts[1] += 1; $parts[2] = 0 }
+        'major' { $parts[0] += 1; $parts[1] = 0; $parts[2] = 0 }
+        default { throw "Unknown bump kind: $kind" }
+    }
+    return ($parts -join '.')
+}
+
+function Update-CargoTomlVersion([string]$new) {
+    $path = 'Cargo.toml'
+    $text = Get-Content -Raw $path
+    $replacement = 'version = "' + $new + '"'
+    $updated = [regex]::Replace($text, 'version\s*=\s*"[0-9]+\.[0-9]+\.[0-9]+"', $replacement)
     if ($text -eq $updated) { throw 'Failed to update Cargo.toml version' }
     Set-Content -LiteralPath $path -Value $updated -Encoding UTF8
 }
@@ -73,3 +110,4 @@ try {
     Write-Error $_.Exception.Message
     exit 1
 }
+    } catch {
