@@ -13,6 +13,30 @@ pub struct Candidate {
 #[derive(Clone, Debug)]
 pub struct Version {
     pub value: String,
+    pub display_version: Option<String>,
+    pub distribution: Option<String>,
+    pub vendor: Option<String>,
+}
+
+impl Version {
+    pub fn local(value: impl Into<String>) -> Self {
+        let value = value.into();
+        Self {
+            display_version: Some(value.clone()),
+            distribution: Some("local".to_string()),
+            vendor: Some("Local".to_string()),
+            value,
+        }
+    }
+
+    fn new(value: impl Into<String>) -> Self {
+        Self {
+            value: value.into(),
+            display_version: None,
+            distribution: None,
+            vendor: None,
+        }
+    }
 }
 
 pub struct Api {
@@ -44,10 +68,7 @@ impl Api {
 
     pub fn versions(&self, candidate: &str, offline: bool) -> Result<Vec<Version>> {
         let path = self.cache.join(format!("{candidate}-versions.txt"));
-        let urls = [
-            format!("{}/candidates/{candidate}/windows/versions/all", self.base),
-            format!("{}/candidates/{candidate}/win/versions/all", self.base),
-        ];
+        let urls = version_urls(&self.base, candidate);
 
         if offline {
             let text = fs::read_to_string(path)
@@ -58,7 +79,7 @@ impl Api {
         for url in urls {
             match self
                 .client
-                .get(&url)
+                .get(url)
                 .send()
                 .and_then(|r| r.error_for_status())
             {
@@ -96,6 +117,20 @@ impl Api {
         fs::write(path, &text)?;
         Ok(text)
     }
+}
+
+fn version_urls(base: &str, candidate: &str) -> Vec<String> {
+    if candidate.eq_ignore_ascii_case("java") {
+        return vec![
+            format!("{base}/candidates/java/windowsx64/versions/list?installed="),
+            format!("{base}/candidates/java/windows/versions/all"),
+            format!("{base}/candidates/java/win/versions/all"),
+        ];
+    }
+    vec![
+        format!("{base}/candidates/{candidate}/windows/versions/all"),
+        format!("{base}/candidates/{candidate}/win/versions/all"),
+    ]
 }
 
 fn parse_candidates(text: &str) -> Vec<Candidate> {
@@ -166,9 +201,7 @@ fn parse_versions(text: &str) -> Vec<Version> {
                 .iter()
                 .filter_map(|item| {
                     if let Some(value) = item.as_str() {
-                        return Some(Version {
-                            value: value.to_string(),
-                        });
+                        return Some(Version::new(value));
                     }
                     let value = item
                         .get("version")
@@ -176,10 +209,15 @@ fn parse_versions(text: &str) -> Vec<Version> {
                         .or_else(|| item.get("id"))?
                         .as_str()?
                         .to_string();
-                    Some(Version { value })
+                    Some(Version::new(value))
                 })
                 .collect();
         }
+    }
+
+    let table_versions = parse_versions_table(text);
+    if !table_versions.is_empty() {
+        return table_versions;
     }
 
     let normalized = text.replace([',', '|'], "\n");
@@ -188,8 +226,34 @@ fn parse_versions(text: &str) -> Vec<Version> {
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .filter(|line| !line.starts_with('{') && !line.starts_with('['))
-        .map(|value| Version {
-            value: value.to_string(),
+        .map(Version::new)
+        .collect()
+}
+
+fn parse_versions_table(text: &str) -> Vec<Version> {
+    text.lines()
+        .filter_map(|line| {
+            if !line.contains('|') {
+                return None;
+            }
+            let columns = line.split('|').map(str::trim).collect::<Vec<_>>();
+            if columns.len() < 6 {
+                return None;
+            }
+            let identifier = columns.last()?;
+            if identifier.is_empty() || identifier.eq_ignore_ascii_case("identifier") {
+                return None;
+            }
+            Some(Version {
+                value: identifier.to_string(),
+                display_version: Some(columns[2].to_string()),
+                distribution: Some(columns[3].to_string()),
+                vendor: if columns[0].is_empty() {
+                    None
+                } else {
+                    Some(columns[0].to_string())
+                },
+            })
         })
         .collect()
 }
@@ -262,6 +326,36 @@ mod tests {
         assert_eq!(versions[0].value, "21.0.4-tem");
         assert_eq!(versions[1].value, "17.0.12-tem");
         assert_eq!(versions[2].value, "11.0.24-tem");
+    }
+
+    #[test]
+    fn parses_versions_from_sdkman_table_output() {
+        let versions = parse_versions(
+            r#"
+ Vendor        | Use | Version      | Dist    | Status     | Identifier
+--------------------------------------------------------------------------------
+ Temurin       |     | 25.0.3       | tem     |            | 25.0.3-tem
+               |     | 21.0.11      | tem     |            | 21.0.11-tem
+"#,
+        );
+
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].value, "25.0.3-tem");
+        assert_eq!(versions[0].vendor.as_deref(), Some("Temurin"));
+        assert_eq!(versions[0].display_version.as_deref(), Some("25.0.3"));
+        assert_eq!(versions[0].distribution.as_deref(), Some("tem"));
+        assert_eq!(versions[1].value, "21.0.11-tem");
+        assert_eq!(versions[1].vendor, None);
+    }
+
+    #[test]
+    fn java_versions_use_sdkman_table_endpoint_first() {
+        let urls = version_urls("https://api.sdkman.io/2", "java");
+
+        assert_eq!(
+            urls[0],
+            "https://api.sdkman.io/2/candidates/java/windowsx64/versions/list?installed="
+        );
     }
 
     #[test]

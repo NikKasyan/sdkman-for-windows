@@ -11,7 +11,7 @@ use std::{
 use tempfile::TempDir;
 
 use crate::{
-    api::Api,
+    api::{Api, Version},
     archive,
     cli::{Args, Command, ConfigAction, EnvAction, FlushTarget, OfflineAction},
     config::Config,
@@ -110,25 +110,88 @@ fn list(state: &State, candidate: Option<String>) -> Result<()> {
             let api = Api::new(state)?;
             println!("Available {candidate} Versions");
             let remote_versions = api.versions(&candidate, false)?;
+            let java_table = candidate.eq_ignore_ascii_case("java")
+                && remote_versions
+                    .iter()
+                    .any(|version| version.vendor.is_some());
+            if java_table {
+                print_java_table_header();
+            }
             let mut printed = BTreeSet::new();
             for version in remote_versions {
                 let installed_marker = installed.contains(&version.value);
-                print_list_version(
+                print_list_version_or_java_row(
                     state,
                     &candidate,
-                    &version.value,
+                    &version,
                     installed_marker,
                     current.as_deref(),
+                    java_table,
                 )?;
                 printed.insert(version.value);
             }
             for version in installed {
                 if printed.insert(version.clone()) {
-                    print_list_version(state, &candidate, &version, true, current.as_deref())?;
+                    let version = Version::local(version);
+                    print_list_version_or_java_row(
+                        state,
+                        &candidate,
+                        &version,
+                        true,
+                        current.as_deref(),
+                        java_table,
+                    )?;
                 }
             }
         }
     }
+    Ok(())
+}
+
+fn print_java_table_header() {
+    println!(
+        " {:<14} | {:<3} | {:<12} | {:<7} | {:<9} | Identifier",
+        "Vendor", "Use", "Version", "Dist", "Status"
+    );
+    println!("{}", "-".repeat(78));
+}
+
+fn print_list_version_or_java_row(
+    state: &State,
+    candidate: &str,
+    version: &Version,
+    installed: bool,
+    current: Option<&Path>,
+    java_table: bool,
+) -> Result<()> {
+    if java_table {
+        print_java_table_row(state, candidate, version, installed, current)
+    } else {
+        print_list_version(state, candidate, &version.value, installed, current)
+    }
+}
+
+fn print_java_table_row(
+    state: &State,
+    candidate: &str,
+    version: &Version,
+    installed: bool,
+    current: Option<&Path>,
+) -> Result<()> {
+    let use_marker =
+        if installed && installed_version_is_current(state, candidate, &version.value, current)? {
+            ">"
+        } else {
+            ""
+        };
+    let status = if installed { "installed" } else { "" };
+    let vendor = version.vendor.as_deref().unwrap_or("");
+    let display_version = version.display_version.as_deref().unwrap_or(&version.value);
+    let distribution = version.distribution.as_deref().unwrap_or("local");
+    println!(
+        " {:<14} | {:<3} | {:<12} | {:<7} | {:<9} | {}",
+        vendor, use_marker, display_version, distribution, status, version.value
+    );
     Ok(())
 }
 
