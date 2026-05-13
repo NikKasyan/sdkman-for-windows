@@ -38,15 +38,11 @@ fn run() -> Result<()> {
 }
 
 fn examples_for_raw_args(args: &[OsString]) -> Option<&'static str> {
-    let command = args
+    let mut it = args
         .iter()
         .filter_map(|arg| arg.to_str())
-        .find(|arg| !arg.starts_with('-'))?;
-    let subcommand = args
-        .iter()
-        .filter_map(|arg| arg.to_str())
-        .skip_while(|arg| *arg != command)
-        .skip(1)
-        .find(|arg| !arg.starts_with('-'));
+        .filter(|arg| !arg.starts_with('-'));
+    let command = it.next()?;
+    let subcommand = it.next();
     cli::examples_for(command, subcommand)
 }

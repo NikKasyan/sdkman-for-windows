@@ -29,11 +29,11 @@ pub enum Command {
         after_help = "Examples:\n  sdk init\n  sdk config"
     )]
     Init,
-    #[command(alias = "ls")]
     #[command(
+        alias = "ls",
         about = "List candidates or versions",
         long_about = "List available SDKMAN candidates or versions for one candidate.\n\nWithout a candidate, this shows candidate names such as java or maven. With a candidate, it shows versions and marks installed/current versions where possible. In offline mode, it only shows installed versions.",
-        after_help = "Examples:\n  sdk list\n  sdk list java"
+        after_help = "Examples:\n  sdk list\n  sdk ls\n  sdk list java"
     )]
     List {
         #[arg(help = "Candidate to list versions for, for example java or maven")]
@@ -45,13 +45,13 @@ pub enum Command {
         )]
         order: Option<Order>,
     },
-    #[command(alias = "i")]
     #[command(
+        alias = "i",
         about = "Install or register an SDK version",
         long_about = "Install or register an SDK version.\n\nWith only a candidate and version, sdk downloads and installs that version under the SDKMAN for Windows home. With a local path, sdk registers the existing SDK without copying or deleting it later. After install, sdk can set the version as the default.",
         after_help = "Examples:
   sdk install java 21.0.4-tem
-  sdk install java 21-local C:\\Tools\\java-21
+  sdk i java 21-local C:\\Tools\\java-21
   sdk install maven 3.9.9 C:\\Tools\\apache-maven-3.9.9"
     )]
     Install {
@@ -64,8 +64,8 @@ pub enum Command {
         #[arg(help = "Existing SDK home to register as a local install")]
         local_path: Option<PathBuf>,
     },
-    #[command(alias = "rm")]
     #[command(
+        alias = "rm",
         about = "Remove an installed SDK version or unregister a local SDK",
         long_about = "Remove an installed SDK version or unregister a local SDK.\n\nDownloaded SDKs are deleted from the SDKMAN for Windows candidates directory. Locally registered SDKs are only deregistered; the original SDK directory is never deleted. If the removed version was the default, its current link and shims are removed.",
         after_help = "Examples:\n  sdk uninstall java 21.0.4-tem\n  sdk rm java 21-local"
@@ -89,11 +89,11 @@ pub enum Command {
         #[arg(help = "Installed version to use in this shell. Omit to choose installed version")]
         version: Option<String>,
     },
-    #[command(alias = "d")]
     #[command(
+        alias = "d",
         about = "Set the default version for a candidate",
         long_about = "Set the default version for a candidate.\n\nThis points the candidate's current link at the selected SDK and regenerates command shims. New shells, and shells where the wrapper has placed the shim directory first on PATH, will resolve commands such as java or mvn through this default.",
-        after_help = "Examples:\n  sdk default java 21.0.4-tem\n  sdk default maven 3.9.9"
+        after_help = "Examples:\n  sdk default java 21.0.4-tem\n  sdk d maven 3.9.9"
     )]
     Default {
         #[arg(help = "Candidate name, for example java or maven")]
@@ -101,21 +101,21 @@ pub enum Command {
         #[arg(help = "Installed version to make the default. Omit to choose installed version")]
         version: Option<String>,
     },
-    #[command(alias = "c")]
     #[command(
+        alias = "c",
         about = "Show active SDK versions",
         long_about = "Show active SDK versions.\n\nWith a candidate, this prints the active home for that candidate. Without a candidate, it prints active homes for all installed candidates. Shell-local selections from `sdk use` take precedence over defaults.",
-        after_help = "Examples:\n  sdk current\n  sdk current java"
+        after_help = "Examples:\n  sdk current\n  sdk c java"
     )]
     Current {
         #[arg(help = "Candidate to inspect. Omit to show all active candidates")]
         candidate: Option<String>,
     },
-    #[command(alias = "h")]
     #[command(
+        alias = "h",
         about = "Print an SDK home directory",
         long_about = "Print an SDK home directory.\n\nWith only a candidate, this prints the active home for that candidate. With a version, it prints that installed version's home. This is useful for scripts that need a stable SDK path.",
-        after_help = "Examples:\n  sdk home java\n  sdk home java 21.0.4-tem"
+        after_help = "Examples:\n  sdk home java\n  sdk h java 21.0.4-tem"
     )]
     Home {
         #[arg(help = "Candidate name, for example java or maven")]
