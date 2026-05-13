@@ -27,6 +27,10 @@ mod windows {
             .to_string()
     }
 
+    fn ps_quote(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "''"))
+    }
+
     fn create_fake_command(dir: &Path, command_name: &str, marker: &str) {
         let bin = dir.join("bin");
         fs::create_dir_all(&bin).unwrap();
@@ -210,5 +214,137 @@ mod windows {
             "stdout:\n{}",
             String::from_utf8_lossy(&output.stdout)
         );
+    }
+
+    #[test]
+    fn installer_orders_managed_path_entries_and_is_idempotent() {
+        let install_dir = temp_dir();
+        let existing_dir = temp_dir();
+        let sdk_exe = cargo_bin("sdk").display().to_string();
+        let script = repo_path("install.ps1");
+        let install_text = install_dir.path().display().to_string();
+        let script_dir = install_dir.path().join("scripts").display().to_string();
+        let shim_dir = install_dir.path().join("shims").display().to_string();
+        let bin_dir = install_dir.path().join("bin").display().to_string();
+        let existing_text = existing_dir.path().display().to_string();
+
+        let command = format!(
+            "$env:Path = {existing}; & {script} -SdkExe {sdk_exe} -InstallDir {install_dir} -PathScope Process -SkipProfileUpdate; & {script} -SdkExe {sdk_exe} -InstallDir {install_dir} -PathScope Process -SkipProfileUpdate; 'PATH_MARKER=' + [Environment]::GetEnvironmentVariable('Path', 'Process')",
+            existing = ps_quote(&format!("{existing_text};{bin_dir};{script_dir}\\;{existing_text}")),
+            script = ps_quote(&script),
+            sdk_exe = ps_quote(&sdk_exe),
+            install_dir = ps_quote(&install_text),
+        );
+
+        let output = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                &command,
+            ])
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let path = stdout
+            .lines()
+            .find_map(|line| line.strip_prefix("PATH_MARKER="))
+            .expect("installer test should print PATH_MARKER");
+        let entries: Vec<&str> = path.split(';').collect();
+
+        assert_eq!(entries[0], script_dir);
+        assert_eq!(entries[1], shim_dir);
+        assert_eq!(entries[2], bin_dir);
+        assert_eq!(
+            entries.iter().filter(|entry| **entry == script_dir).count(),
+            1
+        );
+        assert_eq!(
+            entries.iter().filter(|entry| **entry == shim_dir).count(),
+            1
+        );
+        assert_eq!(entries.iter().filter(|entry| **entry == bin_dir).count(), 1);
+        assert!(entries.contains(&existing_text.as_str()));
+    }
+
+    #[test]
+    fn uninstaller_removes_command_integration_but_preserves_data_by_default() {
+        let install_dir = temp_dir();
+        let existing_dir = temp_dir();
+        let sdk_exe = cargo_bin("sdk").display().to_string();
+        let install_script = repo_path("install.ps1");
+        let uninstall_script = repo_path("uninstall.ps1");
+        let install_text = install_dir.path().display().to_string();
+        let script_dir = install_dir.path().join("scripts").display().to_string();
+        let shim_dir = install_dir.path().join("shims").display().to_string();
+        let bin_dir = install_dir.path().join("bin").display().to_string();
+        let existing_text = existing_dir.path().display().to_string();
+
+        fs::create_dir_all(install_dir.path().join("candidates").join("java")).unwrap();
+        fs::write(
+            install_dir
+                .path()
+                .join("candidates")
+                .join("java")
+                .join("keep.txt"),
+            "sdk",
+        )
+        .unwrap();
+
+        let command = format!(
+            "$env:Path = {existing}; & {install_script} -SdkExe {sdk_exe} -InstallDir {install_dir} -PathScope Process -SkipProfileUpdate; Set-Content -Path {shim_file} -Value '@echo off'; & {uninstall_script} -InstallDir {install_dir} -PathScope Process -SkipProfileUpdate; 'PATH_MARKER=' + [Environment]::GetEnvironmentVariable('Path', 'Process')",
+            existing = ps_quote(&existing_text),
+            install_script = ps_quote(&install_script),
+            uninstall_script = ps_quote(&uninstall_script),
+            sdk_exe = ps_quote(&sdk_exe),
+            install_dir = ps_quote(&install_text),
+            shim_file = ps_quote(&install_dir.path().join("shims").join("sample.cmd").display().to_string()),
+        );
+
+        let output = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                &command,
+            ])
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let path = stdout
+            .lines()
+            .find_map(|line| line.strip_prefix("PATH_MARKER="))
+            .expect("uninstaller test should print PATH_MARKER");
+        let entries: Vec<&str> = path.split(';').collect();
+
+        assert_eq!(entries, vec![existing_text.as_str()]);
+        assert!(!Path::new(&script_dir).join("sdk.ps1").exists());
+        assert!(!Path::new(&script_dir).join("sdk.cmd").exists());
+        assert!(!Path::new(&bin_dir).join("sdk.exe").exists());
+        assert!(!Path::new(&shim_dir).join("sample.cmd").exists());
+        assert!(install_dir
+            .path()
+            .join("candidates")
+            .join("java")
+            .join("keep.txt")
+            .exists());
     }
 }

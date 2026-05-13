@@ -1,10 +1,48 @@
 param(
     [string]$SdkExe = "$PSScriptRoot\target\release\sdk.exe",
     [string]$InstallDir = "$env:USERPROFILE\.sdkman-windows",
+    [ValidateSet("User", "Process")]
+    [string]$PathScope = "User",
     [switch]$SkipProfileUpdate
 )
 
 $ErrorActionPreference = "Stop"
+
+function Get-PathEntryKey {
+    param([string]$PathEntry)
+
+    $trimmed = $PathEntry.Trim().TrimEnd('\', '/')
+    if ($IsWindows -or $env:OS -eq "Windows_NT") {
+        return $trimmed.ToLowerInvariant()
+    }
+    return $trimmed
+}
+
+function Set-SdkmanPathEntries {
+    param(
+        [string]$Scope,
+        [string[]]$ManagedEntries
+    )
+
+    $currentPath = [Environment]::GetEnvironmentVariable("Path", $Scope)
+    $existingEntries = @()
+    if ($currentPath) {
+        $existingEntries = $currentPath -split ';' | Where-Object { $_ -and $_.Trim().Length -gt 0 }
+    }
+
+    $managedKeys = @{}
+    foreach ($entry in $ManagedEntries) {
+        $managedKeys[(Get-PathEntryKey $entry)] = $true
+    }
+
+    $preservedEntries = foreach ($entry in $existingEntries) {
+        if (!$managedKeys.ContainsKey((Get-PathEntryKey $entry))) {
+            $entry
+        }
+    }
+
+    [Environment]::SetEnvironmentVariable("Path", (($ManagedEntries + $preservedEntries) -join ';'), $Scope)
+}
 
 if (!(Test-Path $SdkExe)) {
     throw "sdk.exe not found at $SdkExe. Build with: cargo build --release"
@@ -18,18 +56,9 @@ New-Item -ItemType Directory -Force -Path $binDir, $shimDir, $scriptDir, (Join-P
 Copy-Item -Force $SdkExe (Join-Path $binDir "sdk.exe")
 Copy-Item -Force "$PSScriptRoot\scripts\sdk.ps1" (Join-Path $scriptDir "sdk.ps1")
 Copy-Item -Force "$PSScriptRoot\scripts\sdk.cmd" (Join-Path $scriptDir "sdk.cmd")
-Copy-Item -Force "$PSScriptRoot\scripts\sdk-completion.ps1" (Join-Path $scriptDir "sdk-completion.ps1")
-
-$currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-$parts = @()
-if ($currentPath) {
-    $parts = $currentPath -split ';' | Where-Object { $_ -and $_.Trim().Length -gt 0 }
-}
-
 $managedEntries = @($scriptDir, $shimDir, $binDir)
-$parts = @($managedEntries) + @($parts | Where-Object { $managedEntries -notcontains $_ })
-
-[Environment]::SetEnvironmentVariable("Path", ($parts -join ';'), "User")
+Copy-Item -Force "$PSScriptRoot\scripts\sdk-completion.ps1" (Join-Path $scriptDir "sdk-completion.ps1")
+Set-SdkmanPathEntries -Scope $PathScope -ManagedEntries $managedEntries
 
 $previousSdkmanWindowsDir = $env:SDKMAN_WINDOWS_DIR
 try {

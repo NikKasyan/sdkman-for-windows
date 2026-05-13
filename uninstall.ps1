@@ -1,10 +1,42 @@
 param(
     [string]$InstallDir = "$env:USERPROFILE\.sdkman-windows",
+    [ValidateSet("User", "Process")]
+    [string]$PathScope = "User",
     [switch]$RemoveData,
     [switch]$SkipProfileUpdate
 )
 
 $ErrorActionPreference = "Stop"
+
+function Get-PathEntryKey {
+    param([string]$PathEntry)
+
+    $trimmed = $PathEntry.Trim().TrimEnd('\', '/')
+    if ($IsWindows -or $env:OS -eq "Windows_NT") {
+        return $trimmed.ToLowerInvariant()
+    }
+    return $trimmed
+}
+
+function Remove-SdkmanPathEntries {
+    param(
+        [string]$Scope,
+        [string[]]$ManagedEntries
+    )
+
+    $managedKeys = @{}
+    foreach ($entry in $ManagedEntries) {
+        $managedKeys[(Get-PathEntryKey $entry)] = $true
+    }
+
+    $currentPath = [Environment]::GetEnvironmentVariable("Path", $Scope)
+    if ($currentPath) {
+        $parts = $currentPath -split ';' | Where-Object {
+            $_ -and $_.Trim().Length -gt 0 -and !$managedKeys.ContainsKey((Get-PathEntryKey $_))
+        }
+        [Environment]::SetEnvironmentVariable("Path", ($parts -join ';'), $Scope)
+    }
+}
 
 $binDir = Join-Path $InstallDir "bin"
 $shimDir = Join-Path $InstallDir "shims"
@@ -12,15 +44,7 @@ $scriptDir = Join-Path $InstallDir "scripts"
 $completionScript = Join-Path $scriptDir "sdk-completion.ps1"
 
 $managedEntries = @($scriptDir, $shimDir, $binDir)
-$currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-if ($currentPath) {
-    $parts = $currentPath -split ';' | Where-Object {
-        $entry = $_
-        $entry -and $entry.Trim().Length -gt 0 -and
-            -not ($managedEntries | Where-Object { $_ -ieq $entry })
-    }
-    [Environment]::SetEnvironmentVariable("Path", ($parts -join ';'), "User")
-}
+Remove-SdkmanPathEntries -Scope $PathScope -ManagedEntries $managedEntries
 
 if (!$SkipProfileUpdate) {
     $documents = [Environment]::GetFolderPath("MyDocuments")
@@ -61,7 +85,7 @@ if ($RemoveData) {
         }
     }
 
-if (Test-Path $shimDir) {
+    if (Test-Path $shimDir) {
         Get-ChildItem -LiteralPath $shimDir -File |
             Where-Object { $_.Extension -in ".cmd", ".ps1" } |
             Remove-Item -Force

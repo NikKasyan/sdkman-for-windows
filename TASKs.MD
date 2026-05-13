@@ -55,6 +55,8 @@ Verification:
 
 ### TASK-003: Make installer PATH ordering match README
 
+Status: Done.
+
 Problem: README says wrapper paths are placed before the raw binary, but `install.ps1` appends paths to the existing user PATH.
 
 Work:
@@ -70,6 +72,8 @@ Verification:
 - Run the full verification block.
 
 ### TASK-004: Add uninstall documentation for installed files and PATH entries
+
+Status: Done.
 
 Problem: There is no documented way to remove this tool after `install.ps1`.
 

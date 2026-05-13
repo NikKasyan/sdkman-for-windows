@@ -58,7 +58,15 @@ cargo build --release
 
 The installer copies `sdk.exe`, installs the PowerShell and CMD wrappers, updates the user PATH, registers PowerShell completions, and runs `sdk init` for the selected install directory automatically. Open a new terminal after installation so PATH changes are visible.
 
-PowerShell users should invoke the installed `sdk.ps1` wrapper, and CMD users should invoke `sdk.cmd`. The installer puts the wrapper directory before the raw binary so `sdk use` and `sdk env install` can update the current shell session.
+PowerShell users should invoke the installed `sdk.ps1` wrapper, and CMD users should invoke `sdk.cmd`. The installer keeps these SDKMAN for Windows entries at the front of the user PATH, in this order:
+
+```text
+%USERPROFILE%\.sdkman-windows\scripts
+%USERPROFILE%\.sdkman-windows\shims
+%USERPROFILE%\.sdkman-windows\bin
+```
+
+This makes `sdk` resolve to the shell wrapper before the raw `sdk.exe`, and makes generated command shims win over unrelated SDK commands later on PATH. Re-running the installer removes duplicate SDKMAN for Windows PATH entries and preserves unrelated entries.
 
 The installer also registers PowerShell tab completion in the current user's Windows PowerShell and PowerShell profile paths. Completion suggests install versions from SDKMAN metadata, respecting offline mode and cached metadata, and suggests `use` versions from currently installed versions only. Pass `-SkipProfileUpdate` to `install.ps1` if you do not want the installer to edit your PowerShell profiles.
 
@@ -80,7 +88,26 @@ sdk completion status
 .\uninstall.ps1
 ```
 
-By default the uninstaller removes SDKMAN for Windows from the user PATH, removes the PowerShell completion profile entry, and deletes the installed wrapper, binary, and generated shim files. It leaves installed SDKs, metadata, archives, and config under `%USERPROFILE%\.sdkman-windows` in place.
+By default the uninstaller removes these user PATH entries:
+
+```text
+%USERPROFILE%\.sdkman-windows\scripts
+%USERPROFILE%\.sdkman-windows\shims
+%USERPROFILE%\.sdkman-windows\bin
+```
+
+It also removes the PowerShell completion profile entry and deletes the installed command integration files:
+
+```text
+%USERPROFILE%\.sdkman-windows\scripts\sdk.ps1
+%USERPROFILE%\.sdkman-windows\scripts\sdk.cmd
+%USERPROFILE%\.sdkman-windows\scripts\sdk-completion.ps1
+%USERPROFILE%\.sdkman-windows\bin\sdk.exe
+%USERPROFILE%\.sdkman-windows\shims\*.cmd
+%USERPROFILE%\.sdkman-windows\shims\*.ps1
+```
+
+It leaves installed SDKs, metadata, archives, temp files, and config under `%USERPROFILE%\.sdkman-windows` in place.
 
 To remove the entire SDKMAN for Windows home, including downloaded SDKs and metadata, run:
 
