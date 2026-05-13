@@ -95,12 +95,12 @@ impl Api {
         bail!("could not fetch versions for {candidate}")
     }
 
-    pub fn download_url(&self, candidate: &str, version: &str) -> String {
-        let platform = download_platform(candidate);
-        format!(
-            "{}/broker/download/{candidate}/{version}/{platform}",
-            self.base
-        )
+    pub fn download_url(&self, candidate: &str, version: &str) -> Vec<String> {
+        let platforms = download_platforms(candidate);
+        platforms
+            .into_iter()
+            .map(|p| format!("{}/broker/download/{candidate}/{version}/{p}", self.base))
+            .collect()
     }
 
     pub fn refresh(&self) -> Result<()> {
@@ -139,6 +139,14 @@ fn download_platform(candidate: &str) -> &'static str {
         "windowsx64"
     } else {
         "windows"
+    }
+}
+
+fn download_platforms(candidate: &str) -> Vec<&'static str> {
+    if candidate.eq_ignore_ascii_case("java") {
+        vec!["windowsx64", "windows", "win"]
+    } else {
+        vec!["windows", "win", "windowsx64", "generic"]
     }
 }
 

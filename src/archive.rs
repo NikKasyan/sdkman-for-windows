@@ -10,27 +10,52 @@ use std::{
 use tar::Archive;
 use zip::ZipArchive;
 
-pub fn download(client: &Client, url: &str, archive_path: &Path) -> Result<()> {
+pub fn download_with_fallback(
+    client: &Client,
+    urls: &Vec<String>,
+    archive_path: &Path,
+) -> Result<()> {
     if let Some(parent) = archive_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let mut response = client.get(url).send()?.error_for_status()?;
-    let total = response.content_length();
-    let mut file = File::create(archive_path)?;
-    let mut progress = Progress::new("In progress", total, ProgressUnit::Bytes);
-    let mut downloaded = 0;
-    let mut buffer = [0; 64 * 1024];
-    loop {
-        let read = response.read(&mut buffer)?;
-        if read == 0 {
-            break;
+    let mut last_err: Option<anyhow::Error> = None;
+    for url in urls {
+        match client.get(url).send() {
+            Ok(resp) => match resp.error_for_status() {
+                Ok(mut response) => {
+                    let total = response.content_length();
+                    let mut file = File::create(archive_path)?;
+                    let mut progress = Progress::new("In progress", total, ProgressUnit::Bytes);
+                    let mut downloaded = 0;
+                    let mut buffer = [0; 64 * 1024];
+                    loop {
+                        let read = response.read(&mut buffer)?;
+                        if read == 0 {
+                            break;
+                        }
+                        file.write_all(&buffer[..read])?;
+                        downloaded += read as u64;
+                        progress.update(downloaded)?;
+                    }
+                    progress.finish(downloaded)?;
+                    return Ok(());
+                }
+                Err(e) => {
+                    last_err = Some(anyhow::anyhow!("{} -> {}", url, e));
+                    continue;
+                }
+            },
+            Err(e) => {
+                last_err = Some(anyhow::anyhow!("{} -> {}", url, e));
+                continue;
+            }
         }
-        file.write_all(&buffer[..read])?;
-        downloaded += read as u64;
-        progress.update(downloaded)?;
     }
-    progress.finish(downloaded)?;
-    Ok(())
+    if let Some(e) = last_err {
+        Err(e)
+    } else {
+        Err(anyhow::anyhow!("no urls to try"))
+    }
 }
 
 pub fn extract(archive_path: &Path, target_dir: &Path) -> Result<PathBuf> {

@@ -296,11 +296,8 @@ fn install(
         let archive_name = format!("{candidate}-{version}.zip");
         let archive_path = state.archives_dir().join(archive_name);
         println!("Downloading: {candidate} {version}");
-        archive::download(
-            &client,
-            &api.download_url(candidate, &version),
-            &archive_path,
-        )?;
+        let urls = api.download_url(candidate, &version);
+        archive::download_with_fallback(&client, &urls, &archive_path)?;
         let tmp = TempDir::new_in(state.tmp_dir())?;
         println!("Installing: {candidate} {version}");
         let normalized = archive::extract(&archive_path, tmp.path())?;
