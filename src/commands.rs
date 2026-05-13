@@ -267,7 +267,6 @@ fn install(
     local_path: Option<PathBuf>,
 ) -> Result<()> {
     state.init()?;
-    ensure_candidate_exists(state, candidate)?;
     if local_path.is_none() && state.config.offline_mode {
         bail!("install requires network while offline mode is enabled");
     }
