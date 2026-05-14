@@ -30,9 +30,13 @@ pub fn execute(args: Args, state: State) -> Result<()> {
             version,
             local_path,
         } => install::install(&state, &candidate, version, local_path),
-        Command::Uninstall { candidate, version } => install::uninstall(&state, &candidate, version),
+        Command::Uninstall { candidate, version } => {
+            install::uninstall(&state, &candidate, version)
+        }
         Command::Use { candidate, version } => env::use_version(&state, &candidate, version, emit),
-        Command::Default { candidate, version } => install::default_version(&state, &candidate, version),
+        Command::Default { candidate, version } => {
+            install::default_version(&state, &candidate, version)
+        }
         Command::Current { candidate } => simple::current(&state, candidate),
         Command::Home { candidate, version } => simple::home(&state, &candidate, version),
         Command::Env { action } => env::env_cmd(&state, action, emit),

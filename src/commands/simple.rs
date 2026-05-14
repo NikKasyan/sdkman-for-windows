@@ -70,7 +70,8 @@ pub(super) fn update(state: &State) -> Result<()> {
         bail!("update requires network while offline mode is enabled");
     }
     let api = Api::new(state)?;
-    api.refresh().context("failed to refresh candidate metadata")?;
+    api.refresh()
+        .context("failed to refresh candidate metadata")?;
     println!("Candidate metadata refreshed.");
     if let Some(msg) = api.broadcast() {
         println!();
@@ -160,8 +161,8 @@ pub(super) fn selfupdate(state: &State) -> Result<()> {
         .context("could not reach GitHub releases")?
         .text()
         .context("unexpected response from GitHub releases API")?;
-    let json: serde_json::Value = serde_json::from_str(&body)
-        .context("could not parse GitHub releases API response")?;
+    let json: serde_json::Value =
+        serde_json::from_str(&body).context("could not parse GitHub releases API response")?;
 
     let latest = json["tag_name"]
         .as_str()

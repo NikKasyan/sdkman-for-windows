@@ -508,7 +508,9 @@ fn upgrade_reports_nothing_to_do_when_no_candidates_installed() {
         .arg("upgrade")
         .assert()
         .success()
-        .stdout(predicates::str::contains("No installed candidates to check."));
+        .stdout(predicates::str::contains(
+            "No installed candidates to check.",
+        ));
 }
 
 #[test]

@@ -348,9 +348,8 @@ mod tests {
 
     #[test]
     fn parses_candidates_from_line_based_fallbacks() {
-        let candidates = parse_candidates(
-            "java\n{\"candidate\":\"maven\",\"description\":\"Build tool\"}\n",
-        );
+        let candidates =
+            parse_candidates("java\n{\"candidate\":\"maven\",\"description\":\"Build tool\"}\n");
 
         assert_eq!(candidates.len(), 2);
         assert_eq!(candidates[0].name, "java");
