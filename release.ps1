@@ -3,7 +3,8 @@ param(
     [ValidateSet("patch", "minor", "major")]
     [string]$Bump = "patch",
     [switch]$Force,
-    [switch]$SkipCargoCheck
+    [switch]$SkipCargoCheck,
+    [switch]$SkipCiCheck
 )
 
 Set-StrictMode -Version Latest
@@ -139,6 +140,41 @@ function Ensure-GitClean {
     }
 }
 
+function Wait-CiBuild {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CommitSha,
+        [string]$Workflow = "ci.yml",
+        [int]$TimeoutSeconds = 600
+    )
+
+    Write-Host "Waiting for CI to pass on commit $($CommitSha.Substring(0, 8))..." -ForegroundColor Cyan
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $runId = $null
+
+    while (-not $runId) {
+        if ((Get-Date) -gt $deadline) {
+            throw "Timed out waiting for CI run to appear for commit $CommitSha."
+        }
+        Start-Sleep -Seconds 8
+        $json = gh run list --commit $CommitSha --workflow $Workflow --json databaseId --limit 1 2>$null
+        if ($LASTEXITCODE -eq 0 -and $json -and $json -ne "[]") {
+            $parsed = @($json | ConvertFrom-Json)
+            if ($parsed.Count -gt 0 -and $parsed[0].databaseId) {
+                $runId = $parsed[0].databaseId
+            }
+        }
+    }
+
+    Write-Host "CI run #$runId found. Waiting for it to complete..."
+    gh run watch $runId --exit-status
+    if ($LASTEXITCODE -ne 0) {
+        throw "CI failed for commit $CommitSha. Fix the build before tagging the release."
+    }
+    Write-Host "CI passed." -ForegroundColor Green
+}
+
 function Ensure-TagDoesNotExist {
     param(
         [Parameter(Mandatory = $true)]
@@ -190,6 +226,11 @@ try {
         Invoke-CheckedCommand -Command git -ArgumentList @("add", "Cargo.toml", "Cargo.lock")
         Invoke-CheckedCommand -Command git -ArgumentList @("commit", "-m", "chore(release): $tag")
         Invoke-CheckedCommand -Command git -ArgumentList @("push")
+
+        if (-not $SkipCiCheck) {
+            $pushedSha = git rev-parse HEAD
+            Wait-CiBuild -CommitSha $pushedSha
+        }
     } else {
         Write-Host "Cargo.toml is already at $Version; skipping version commit."
     }
