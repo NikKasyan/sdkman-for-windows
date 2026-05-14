@@ -2,6 +2,7 @@ use anyhow::{bail, Context, Result};
 use std::{
     fs,
     io::{self, Write},
+    process::Command,
 };
 
 use crate::{
@@ -147,15 +148,17 @@ pub(super) fn selfupdate(state: &State) -> Result<()> {
     if state.config.offline_mode {
         bail!("selfupdate requires network while offline mode is enabled");
     }
+    state.init()?;
     let current = env!("CARGO_PKG_VERSION");
     let client = reqwest::blocking::Client::builder()
         .user_agent(concat!("sdkman-windows/", env!("CARGO_PKG_VERSION")))
         .timeout(std::time::Duration::from_secs(state.config.curl_max_time))
         .build()?;
 
-    let url = "https://api.github.com/repos/NikKasyan/sdkman-for-windows/releases/latest";
+    println!("Checking for updates...");
+    let api_url = "https://api.github.com/repos/NikKasyan/sdkman-for-windows/releases/latest";
     let body = client
-        .get(url)
+        .get(api_url)
         .send()
         .and_then(|r| r.error_for_status())
         .context("could not reach GitHub releases")?
@@ -164,10 +167,8 @@ pub(super) fn selfupdate(state: &State) -> Result<()> {
     let json: serde_json::Value =
         serde_json::from_str(&body).context("could not parse GitHub releases API response")?;
 
-    let latest = json["tag_name"]
-        .as_str()
-        .unwrap_or("")
-        .trim_start_matches('v');
+    let tag = json["tag_name"].as_str().unwrap_or("").trim();
+    let latest = tag.trim_start_matches('v');
 
     if latest.is_empty() {
         bail!("could not determine latest version from GitHub releases API");
@@ -175,12 +176,92 @@ pub(super) fn selfupdate(state: &State) -> Result<()> {
 
     if latest == current {
         println!("SDKMAN for Windows is up to date (v{current}).");
-    } else {
-        println!("Update available: v{current} -> v{latest}");
-        println!();
-        println!("Download the latest release and run install.ps1:");
-        println!("  https://github.com/NikKasyan/sdkman-for-windows/releases/latest");
+        return Ok(());
     }
+
+    println!("Update available: v{current} -> v{latest}");
+
+    if !prompt_yes("Install update now?", &state.config)? {
+        println!("Update cancelled.");
+        return Ok(());
+    }
+
+    let download_url = json["assets"]
+        .as_array()
+        .and_then(|assets| {
+            assets.iter().find(|a| {
+                a["name"].as_str().map_or(false, |n| {
+                    let lower = n.to_ascii_lowercase();
+                    lower.ends_with(".zip") && !lower.contains(".sha256")
+                })
+            })
+        })
+        .and_then(|a| a["browser_download_url"].as_str())
+        .map(str::to_owned)
+        .unwrap_or_else(|| {
+            format!("https://github.com/NikKasyan/sdkman-for-windows/releases/download/{tag}/sdkman-windows-{tag}.zip")
+        });
+
+    let stage_dir = state.tmp_dir().join(format!("selfupdate-{latest}"));
+    fs::create_dir_all(&stage_dir)?;
+
+    println!("Downloading v{latest}...");
+    let archive_path = crate::archive::download_with_fallback(
+        &client,
+        &[download_url],
+        &stage_dir,
+        "sdkman-windows",
+    )?;
+
+    let extract_dir = stage_dir.join("extracted");
+    crate::archive::extract(&archive_path, &extract_dir)?;
+
+    let install_ps1 = extract_dir.join("install.ps1");
+    let sdk_exe_new = extract_dir
+        .join("target")
+        .join("release")
+        .join("sdk.exe");
+
+    if !install_ps1.exists() {
+        bail!("install.ps1 not found in release archive");
+    }
+    if !sdk_exe_new.exists() {
+        bail!("sdk.exe not found in release archive");
+    }
+
+    fn esc(s: &str) -> String {
+        s.replace('\'', "''")
+    }
+
+    let script = format!(
+        "Start-Sleep -Seconds 2\n\
+         & '{}' -SdkExe '{}' -InstallDir '{}' -SkipLocalSdkDiscovery -SkipProfileUpdate -UnblockScripts\n\
+         if (Test-Path -LiteralPath '{}') {{ Remove-Item -Recurse -Force -LiteralPath '{}' }}\n",
+        esc(&install_ps1.to_string_lossy()),
+        esc(&sdk_exe_new.to_string_lossy()),
+        esc(&state.root.to_string_lossy()),
+        esc(&stage_dir.to_string_lossy()),
+        esc(&stage_dir.to_string_lossy()),
+    );
+
+    let script_path = stage_dir.join("_update.ps1");
+    fs::write(&script_path, &script)?;
+
+    Command::new("powershell")
+        .args([
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-NonInteractive",
+            "-File",
+            script_path.to_str().context("non-UTF-8 script path")?,
+        ])
+        .spawn()
+        .context("failed to spawn update installer")?;
+
+    println!("Installing v{latest} in the background.");
+    println!("Open a new terminal in a few moments to use the updated version.");
     Ok(())
 }
 

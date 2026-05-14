@@ -22,7 +22,7 @@ sdk offline enable
 sdk flush tmp
 ```
 
-Out of scope for v1: full `upgrade`, full `selfupdate`, and SDKMAN broadcast messages. `sdk upgrade` and `sdk selfupdate` are recognized and print clear unsupported messages.
+Out of scope for v1: full `upgrade` and SDKMAN broadcast messages. `sdk upgrade` is recognized and prints a clear unsupported message.
 
 ## Usage
 
@@ -47,7 +47,7 @@ Run `sdk` or `sdk help` to see the command guide. Run `sdk help <command>` for c
 | `sdk offline disable` | Disables offline mode. | You want remote listing, metadata refresh, or downloads again. |
 | `sdk update` | Refreshes cached SDKMAN candidate and version metadata. | Listings or installs should use fresh catalog data. |
 | `sdk upgrade` | Prints a friendly unsupported message. | You tried the SDKMAN command and need to know the current Windows-native status. |
-| `sdk selfupdate` | Prints a friendly unsupported message. | You tried the SDKMAN command and need to know how to update manually. |
+| `sdk selfupdate` | Checks GitHub for a newer release and, if one is available, downloads it and installs it in the background. | You want to update SDKMAN for Windows without downloading the ZIP manually. |
 | `sdk flush <target>` | Clears `archives`, `tmp`, `metadata`, or `all` caches. | You want downloads, extraction scratch data, or metadata rebuilt. |
 | `sdk config` | Prints the config path and current values. | You want to inspect settings. |
 | `sdk config set <key> <value>` | Updates a supported SDKMAN-style configuration key. | You want to change behavior such as auto-answer, timeouts, or offline mode. |
@@ -56,6 +56,30 @@ Run `sdk` or `sdk help` to see the command guide. Run `sdk help <command>` for c
 ## Release Artifacts
 
 GitHub Actions runs format, test, and clippy checks on Windows. The release workflow builds `target\release\sdk.exe`, packages it with the installer, uninstaller, wrappers, completion script, README, and Cargo metadata, and uploads a ZIP plus a SHA-256 checksum. Pushing a tag such as `v0.1.0` also attaches those files to a GitHub release.
+
+## Install from Release
+
+Download the latest release ZIP from the [GitHub releases page](https://github.com/NikKasyan/sdkman-for-windows/releases/latest), extract it, then run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+PowerShell's default execution policy blocks unsigned scripts downloaded from the internet. The `-ExecutionPolicy Bypass` flag scopes the bypass to this single invocation without changing your system-wide policy.
+
+Alternatively, adjust your user execution policy once and unblock the file:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+Unblock-File .\install.ps1
+.\install.ps1
+```
+
+Once installed, future updates can be applied without downloading manually:
+
+```powershell
+sdk selfupdate
+```
 
 ## Install From Source
 
