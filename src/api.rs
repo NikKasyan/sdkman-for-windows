@@ -7,7 +7,6 @@ use crate::state::State;
 #[derive(Clone, Debug)]
 pub struct Candidate {
     pub name: String,
-    pub description: String,
 }
 
 #[derive(Clone, Debug)]
@@ -193,23 +192,15 @@ fn parse_candidates(text: &str) -> Vec<Candidate> {
             return items
                 .iter()
                 .filter_map(|item| {
-                    if let Some(name) = item.as_str() {
-                        return Some(Candidate {
-                            name: name.to_string(),
-                            description: String::new(),
-                        });
-                    }
                     let name = item
-                        .get("candidate")
-                        .or_else(|| item.get("name"))?
-                        .as_str()?
+                        .as_str()
+                        .or_else(|| {
+                            item.get("candidate")
+                                .or_else(|| item.get("name"))
+                                .and_then(|v| v.as_str())
+                        })?
                         .to_string();
-                    let description = item
-                        .get("description")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    Some(Candidate { name, description })
+                    Some(Candidate { name })
                 })
                 .collect();
         }
@@ -227,14 +218,8 @@ fn parse_candidates(text: &str) -> Vec<Candidate> {
                 .or_else(|| json.get("name"))
                 .and_then(|v| v.as_str())
             {
-                let description = json
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
                 result.push(Candidate {
                     name: name.to_string(),
-                    description,
                 });
             }
             continue;
@@ -251,22 +236,19 @@ fn parse_candidates(text: &str) -> Vec<Candidate> {
                 for token in tokens {
                     result.push(Candidate {
                         name: token.to_string(),
-                        description: String::new(),
                     });
                 }
                 continue;
             }
-            // Tokens contain spaces — treat first as name, remainder as description.
-            if let Some((&name, rest)) = tokens.split_first() {
+            // Tokens with spaces: only the first token is a candidate name.
+            if let Some(&name) = tokens.first() {
                 result.push(Candidate {
                     name: name.to_string(),
-                    description: rest.join(", "),
                 });
             }
         } else {
             result.push(Candidate {
                 name: line.to_string(),
-                description: String::new(),
             });
         }
     }
@@ -350,7 +332,6 @@ mod tests {
 
         assert_eq!(candidates.len(), 2);
         assert_eq!(candidates[0].name, "java");
-        assert_eq!(candidates[0].description, "");
         assert_eq!(candidates[1].name, "maven");
     }
 
@@ -362,21 +343,18 @@ mod tests {
 
         assert_eq!(candidates.len(), 2);
         assert_eq!(candidates[0].name, "java");
-        assert_eq!(candidates[0].description, "JVMs");
         assert_eq!(candidates[1].name, "maven");
     }
 
     #[test]
     fn parses_candidates_from_line_based_fallbacks() {
         let candidates = parse_candidates(
-            "java,Java runtimes\n{\"candidate\":\"maven\",\"description\":\"Build tool\"}\n",
+            "java\n{\"candidate\":\"maven\",\"description\":\"Build tool\"}\n",
         );
 
         assert_eq!(candidates.len(), 2);
         assert_eq!(candidates[0].name, "java");
-        assert_eq!(candidates[0].description, "Java runtimes");
         assert_eq!(candidates[1].name, "maven");
-        assert_eq!(candidates[1].description, "Build tool");
     }
 
     #[test]
@@ -387,7 +365,6 @@ mod tests {
         assert_eq!(candidates[0].name, "ant");
         assert_eq!(candidates[1].name, "maven");
         assert_eq!(candidates[2].name, "tomcat");
-        assert!(candidates[0].description.is_empty());
     }
 
     #[test]
