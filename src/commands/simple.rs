@@ -190,7 +190,7 @@ pub(super) fn selfupdate(state: &State) -> Result<()> {
         .as_array()
         .and_then(|assets| {
             assets.iter().find(|a| {
-                a["name"].as_str().map_or(false, |n| {
+                a["name"].as_str().is_some_and(|n| {
                     let lower = n.to_ascii_lowercase();
                     lower.ends_with(".zip") && !lower.contains(".sha256")
                 })
