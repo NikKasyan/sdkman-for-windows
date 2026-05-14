@@ -13,13 +13,12 @@ function Invoke-CheckedCommand {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Command,
-        [Parameter(ValueFromRemainingArguments = $true)]
-        [string[]]$Arguments
+        [string[]]$ArgumentList = @()
     )
 
-    & $Command @Arguments
+    & $Command @ArgumentList
     if ($LASTEXITCODE -ne 0) {
-        throw "$Command $($Arguments -join ' ') failed with exit code $LASTEXITCODE"
+        throw "$Command $($ArgumentList -join ' ') failed with exit code $LASTEXITCODE"
     }
 }
 
@@ -80,23 +79,61 @@ function Update-CargoTomlVersion {
         1
     )
 
+    if ($text -eq $updated -and $text -match "(?m)^\s*version\s*=\s*`"$NewVersion`"\s*$") {
+        return $false
+    }
+
     if ($text -eq $updated) {
         throw "Failed to update Cargo.toml version"
     }
 
     Set-Content -LiteralPath $path -Value $updated -Encoding UTF8
+    return $true
 }
 
-function Ensure-GitClean {
+function Get-GitStatus {
     $status = git status --porcelain
     if ($LASTEXITCODE -ne 0) {
         throw "git status failed. If Git reports dubious ownership, add this repository as a safe.directory and rerun."
     }
 
+    return @($status)
+}
+
+function Confirm-DirtyRelease {
+    param(
+        [string[]]$Status,
+        [string]$CurrentVersion
+    )
+
+    if (-not $Status) {
+        return $false
+    }
+
+    if ($Force) {
+        Write-Host "Working tree is dirty but proceeding because -Force was specified." -ForegroundColor Yellow
+        return $true
+    }
+
+    Write-Host "Working tree is not clean:" -ForegroundColor Yellow
+    $Status | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+    $answer = Read-Host "Re-release current version v$CurrentVersion instead of bumping? [Y/n]"
+    if ($answer.Trim() -in @("", "y", "Y", "yes", "YES")) {
+        Write-Host "Proceeding with current version v$CurrentVersion." -ForegroundColor Yellow
+        return $true
+    }
+
+    throw "Working tree is not clean. Commit or stash changes before preparing a new bumped release."
+}
+
+function Ensure-GitClean {
+    param(
+        [string[]]$Status,
+        [bool]$DirtyConfirmed
+    )
+
     if ($status) {
-        if ($Force) {
-            Write-Host "Working tree is dirty but proceeding because -Force was specified." -ForegroundColor Yellow
-        } else {
+        if (-not $DirtyConfirmed) {
             throw "Working tree is not clean. Commit or stash changes, or run with -Force."
         }
     }
@@ -126,8 +163,13 @@ try {
     }
 
     $current = Get-CurrentVersion
+    $gitStatus = Get-GitStatus
+    $dirtyConfirmed = Confirm-DirtyRelease -Status $gitStatus -CurrentVersion $current
+
     if ($Version) {
         Assert-SemverVersion -Value $Version
+    } elseif ($dirtyConfirmed) {
+        $Version = $current
     } else {
         $Version = Bump-Version -Value $current -Kind $Bump
     }
@@ -135,20 +177,25 @@ try {
     $tag = "v$Version"
     Write-Host "Preparing release $tag (current version: $current)"
 
-    Ensure-GitClean
+    Ensure-GitClean -Status $gitStatus -DirtyConfirmed $dirtyConfirmed
     Ensure-TagDoesNotExist -Tag $tag
 
-    Update-CargoTomlVersion -NewVersion $Version
+    $updatedVersion = Update-CargoTomlVersion -NewVersion $Version
 
-    if (-not $SkipCargoCheck) {
-        Invoke-CheckedCommand cargo check
+    if ($updatedVersion) {
+        if (-not $SkipCargoCheck) {
+            Invoke-CheckedCommand -Command cargo -ArgumentList @("check")
+        }
+
+        Invoke-CheckedCommand -Command git -ArgumentList @("add", "Cargo.toml", "Cargo.lock")
+        Invoke-CheckedCommand -Command git -ArgumentList @("commit", "-m", "chore(release): $tag")
+        Invoke-CheckedCommand -Command git -ArgumentList @("push")
+    } else {
+        Write-Host "Cargo.toml is already at $Version; skipping version commit."
     }
 
-    Invoke-CheckedCommand git add Cargo.toml Cargo.lock
-    Invoke-CheckedCommand git commit -m "chore(release): $tag"
-    Invoke-CheckedCommand git push
-    Invoke-CheckedCommand git tag -a $tag -m $tag
-    Invoke-CheckedCommand git push origin $tag
+    Invoke-CheckedCommand -Command git -ArgumentList @("tag", "-a", $tag, "-m", $tag)
+    Invoke-CheckedCommand -Command git -ArgumentList @("push", "origin", $tag)
 
     Write-Host "Released $tag" -ForegroundColor Green
 } catch {
