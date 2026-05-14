@@ -151,14 +151,6 @@ To remove the entire SDKMAN for Windows home, including downloaded SDKs and meta
 
 External local SDK directories registered with `sdk install <candidate> <version> <path>` are not removed.
 
-## Workspace Git Note
-
-If Git reports dubious ownership in this workspace, run:
-
-```powershell
-git config --global --add safe.directory C:/Users/KasyanNikolaus/Desktop/WORK/TOOLS/sdkman-windows
-```
-
 ## Configuration
 
 Config lives at `%USERPROFILE%\.sdkman-windows\etc\config` and supports SDKMAN-style keys:
