@@ -215,31 +215,62 @@ fn parse_candidates(text: &str) -> Vec<Candidate> {
         }
     }
 
-    text.lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            if line.is_empty() {
-                return None;
-            }
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-                let name = json
-                    .get("candidate")
-                    .or_else(|| json.get("name"))?
-                    .as_str()?
-                    .to_string();
+    let mut result = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
+            if let Some(name) = json
+                .get("candidate")
+                .or_else(|| json.get("name"))
+                .and_then(|v| v.as_str())
+            {
                 let description = json
                     .get("description")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                return Some(Candidate { name, description });
+                result.push(Candidate {
+                    name: name.to_string(),
+                    description,
+                });
             }
-            let mut parts = line.splitn(2, ',');
-            let name = parts.next()?.trim().to_string();
-            let description = parts.next().unwrap_or("").trim().to_string();
-            Some(Candidate { name, description })
-        })
-        .collect()
+            continue;
+        }
+        // If all comma-separated tokens are identifier-like (no spaces), the line is a
+        // flat list of candidate names (the format /candidates/all actually returns).
+        if line.contains(',') {
+            let tokens: Vec<&str> = line
+                .split(',')
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .collect();
+            if tokens.iter().all(|t| !t.contains(' ')) {
+                for token in tokens {
+                    result.push(Candidate {
+                        name: token.to_string(),
+                        description: String::new(),
+                    });
+                }
+                continue;
+            }
+            // Tokens contain spaces — treat first as name, remainder as description.
+            if let Some((&name, rest)) = tokens.split_first() {
+                result.push(Candidate {
+                    name: name.to_string(),
+                    description: rest.join(", "),
+                });
+            }
+        } else {
+            result.push(Candidate {
+                name: line.to_string(),
+                description: String::new(),
+            });
+        }
+    }
+    result
 }
 
 fn parse_versions(text: &str) -> Vec<Version> {
@@ -346,6 +377,17 @@ mod tests {
         assert_eq!(candidates[0].description, "Java runtimes");
         assert_eq!(candidates[1].name, "maven");
         assert_eq!(candidates[1].description, "Build tool");
+    }
+
+    #[test]
+    fn parses_candidates_from_flat_comma_separated_list() {
+        let candidates = parse_candidates("ant,maven,tomcat");
+
+        assert_eq!(candidates.len(), 3);
+        assert_eq!(candidates[0].name, "ant");
+        assert_eq!(candidates[1].name, "maven");
+        assert_eq!(candidates[2].name, "tomcat");
+        assert!(candidates[0].description.is_empty());
     }
 
     #[test]

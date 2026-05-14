@@ -16,14 +16,13 @@ pub(super) fn list(state: &State, candidate: Option<String>, order: Option<Order
     match candidate {
         None => {
             let api = Api::new(state)?;
+            let names: Vec<String> = api
+                .candidates(state.config.offline_mode)?
+                .into_iter()
+                .map(|c| c.name)
+                .collect();
             println!("Available Candidates");
-            for candidate in api.candidates(state.config.offline_mode)? {
-                if candidate.description.is_empty() {
-                    println!("{}", candidate.name);
-                } else {
-                    println!("{:<18} {}", candidate.name, candidate.description);
-                }
-            }
+            println!("{}", names.join(", "));
         }
         Some(candidate) => {
             let installed = state.installed_versions(&candidate)?;
