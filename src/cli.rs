@@ -148,14 +148,17 @@ pub enum Command {
     )]
     Update,
     #[command(
-        about = "Report that SDK upgrades are not implemented yet",
-        long_about = "Report that SDK upgrades are not implemented yet.\n\nSDKMAN for Windows can install, switch, and uninstall versions, but automatic upgrade selection is not implemented yet.",
-        after_help = "Examples:\n  sdk upgrade"
+        about = "Show and apply available SDK upgrades",
+        long_about = "Show and apply available SDK upgrades.\n\nFor each installed candidate that has a default version set, checks the SDKMAN catalog for a newer version and offers to install it and set it as the new default. Pass a candidate name to limit the check to one SDK.",
+        after_help = "Examples:\n  sdk upgrade\n  sdk upgrade java"
     )]
-    Upgrade,
+    Upgrade {
+        #[arg(help = "Candidate to upgrade. Omit to check all installed candidates")]
+        candidate: Option<String>,
+    },
     #[command(
-        about = "Report that self-update is not implemented yet",
-        long_about = "Report that self-update is not implemented yet.\n\nInstall a newer SDKMAN for Windows release by downloading the release artifact and running install.ps1 again.",
+        about = "Check for SDKMAN for Windows updates",
+        long_about = "Check for SDKMAN for Windows updates.\n\nFetches the latest release from GitHub and compares it with the installed version. If a newer version is available, prints the download URL and install instructions.",
         after_help = "Examples:\n  sdk selfupdate"
     )]
     Selfupdate,
@@ -255,8 +258,8 @@ const COMMAND_GUIDE: &str = "Command guide:
   env                 Create, apply, or remove project .sdkmanrc files.
   offline             Toggle network-free mode.
   update              Refresh cached SDKMAN candidate/version metadata.
-  upgrade             Not implemented yet; use install/default explicitly.
-  selfupdate          Not implemented yet; reinstall a release artifact.
+  upgrade             Check for and apply SDK upgrades.
+  selfupdate          Check for and install SDKMAN for Windows updates.
   flush               Clear archives, temporary files, metadata, or all caches.
   config              Show or update SDKMAN for Windows configuration.
   version             Print version information.
@@ -282,7 +285,7 @@ pub fn examples_for(command: &str, subcommand: Option<&str>) -> Option<&'static 
         ("env", _) => Some("Examples:\n  sdk env init\n  sdk env install\n  sdk env clear"),
         ("offline", _) => Some("Examples:\n  sdk offline enable\n  sdk offline disable"),
         ("update", _) => Some("Examples:\n  sdk update"),
-        ("upgrade", _) => Some("Examples:\n  sdk upgrade"),
+        ("upgrade", _) => Some("Examples:\n  sdk upgrade\n  sdk upgrade java"),
         ("selfupdate", _) => Some("Examples:\n  sdk selfupdate"),
         ("flush", _) => {
             Some("Examples:\n  sdk flush tmp\n  sdk flush metadata\n  sdk flush archives\n  sdk flush all")

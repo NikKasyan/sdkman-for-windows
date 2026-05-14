@@ -38,14 +38,8 @@ pub fn execute(args: Args, state: State) -> Result<()> {
         Command::Env { action } => env::env_cmd(&state, action, emit),
         Command::Offline { action } => simple::offline(&state, action),
         Command::Update => simple::update(&state),
-        Command::Upgrade => simple::unsupported(
-            "upgrade",
-            "Automatic SDK upgrades are not implemented yet. Use `sdk install <candidate> <version>` and `sdk default <candidate> <version>` explicitly.",
-        ),
-        Command::Selfupdate => simple::unsupported(
-            "selfupdate",
-            "Self-update is not implemented yet. Download a newer release artifact and run install.ps1 again.",
-        ),
+        Command::Upgrade { candidate } => simple::upgrade(&state, candidate),
+        Command::Selfupdate => simple::selfupdate(&state),
         Command::Flush { target } => simple::flush(&state, target.unwrap_or(FlushTarget::All)),
         Command::Config { action } => simple::config(&state, action),
         Command::Version => simple::version(),

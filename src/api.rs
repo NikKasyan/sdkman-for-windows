@@ -118,6 +118,32 @@ impl Api {
         Ok(())
     }
 
+    /// Fetches the latest SDKMAN broadcast message. Returns `Some(message)` only
+    /// when the message differs from the locally cached copy, so callers can
+    /// display it exactly once per change.
+    pub fn broadcast(&self) -> Option<String> {
+        let url = format!("{}/broadcast/latest", self.base);
+        let text = self
+            .client
+            .get(&url)
+            .send()
+            .and_then(|r| r.error_for_status())
+            .and_then(|r| r.text())
+            .ok()?;
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let path = self.cache.join("broadcast.txt");
+        let cached = fs::read_to_string(&path).unwrap_or_default();
+        if trimmed == cached.trim() {
+            return None;
+        }
+        let _ = fs::create_dir_all(&self.cache);
+        let _ = fs::write(&path, trimmed);
+        Some(trimmed.to_string())
+    }
+
     fn get_cached(&self, url: &str, path: &PathBuf, offline: bool) -> Result<String> {
         if offline {
             return fs::read_to_string(path)

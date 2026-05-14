@@ -499,8 +499,27 @@ fn offline_mode_allows_local_workflows_and_blocks_network_workflows() {
 }
 
 #[test]
-fn upgrade_and_selfupdate_fail_with_friendly_messages() {
+fn upgrade_reports_nothing_to_do_when_no_candidates_installed() {
     let temp = TempDir::new().unwrap();
+
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", temp.path())
+        .arg("upgrade")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("No installed candidates to check."));
+}
+
+#[test]
+fn upgrade_fails_in_offline_mode() {
+    let temp = TempDir::new().unwrap();
+    fs::create_dir_all(temp.path().join("etc")).unwrap();
+    fs::write(
+        temp.path().join("etc").join("config"),
+        "sdkman_offline_mode=true\n",
+    )
+    .unwrap();
 
     Command::cargo_bin("sdk")
         .unwrap()
@@ -509,11 +528,19 @@ fn upgrade_and_selfupdate_fail_with_friendly_messages() {
         .assert()
         .failure()
         .stderr(predicates::str::contains(
-            "sdk upgrade is not supported yet",
-        ))
-        .stderr(predicates::str::contains(
-            "sdk install <candidate> <version>",
+            "upgrade requires network while offline mode is enabled",
         ));
+}
+
+#[test]
+fn selfupdate_fails_in_offline_mode() {
+    let temp = TempDir::new().unwrap();
+    fs::create_dir_all(temp.path().join("etc")).unwrap();
+    fs::write(
+        temp.path().join("etc").join("config"),
+        "sdkman_offline_mode=true\n",
+    )
+    .unwrap();
 
     Command::cargo_bin("sdk")
         .unwrap()
@@ -522,9 +549,8 @@ fn upgrade_and_selfupdate_fail_with_friendly_messages() {
         .assert()
         .failure()
         .stderr(predicates::str::contains(
-            "sdk selfupdate is not supported yet",
-        ))
-        .stderr(predicates::str::contains("install.ps1"));
+            "selfupdate requires network while offline mode is enabled",
+        ));
 }
 
 #[cfg(windows)]

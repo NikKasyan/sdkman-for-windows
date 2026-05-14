@@ -44,36 +44,7 @@ pub(super) fn install(
         })?;
         println!("Registered {candidate} {version} as local install.");
     } else {
-        let api = Api::new(state)?;
-        let base_name = format!("{candidate}-{version}");
-        println!("Downloading: {candidate} {version}");
-        let urls = api.download_url(candidate, &version);
-        let archive_path =
-            archive::download_with_fallback(api.client(), &urls, &state.archives_dir(), &base_name)
-                .with_context(|| format!("failed to download {candidate} {version}"))?;
-        let tmp = TempDir::new_in(state.tmp_dir())?;
-        println!("Installing: {candidate} {version}");
-        let normalized = match archive::extract(&archive_path, tmp.path()) {
-            Ok(path) => path,
-            Err(e) => {
-                let _ = fs::remove_file(&archive_path);
-                return Err(e).with_context(|| format!("failed to extract {candidate} {version}"));
-            }
-        };
-        let final_dir = state.version_dir(candidate, &version);
-        if let Err(e) = archive::move_normalized(&normalized, &final_dir) {
-            let _ = fs::remove_file(&archive_path);
-            if final_dir.exists() {
-                let _ = fs::remove_dir_all(&final_dir);
-            }
-            return Err(e);
-        }
-        state.write_record(&InstallRecord {
-            candidate: candidate.to_string(),
-            version: version.clone(),
-            path: final_dir,
-            local: false,
-        })?;
+        download_and_register(state, candidate, &version)?;
     }
 
     if should_set_default(&state.config)? {
@@ -122,6 +93,40 @@ pub(super) fn default_version(
     fslink::replace_dir_link(&state.current_link(candidate), &record.path)?;
     shims::regenerate(state)?;
     println!("Default {candidate} version set to {version}.");
+    Ok(())
+}
+
+pub(super) fn download_and_register(state: &State, candidate: &str, version: &str) -> Result<()> {
+    let api = Api::new(state)?;
+    let base_name = format!("{candidate}-{version}");
+    println!("Downloading: {candidate} {version}");
+    let urls = api.download_url(candidate, version);
+    let archive_path =
+        archive::download_with_fallback(api.client(), &urls, &state.archives_dir(), &base_name)
+            .with_context(|| format!("failed to download {candidate} {version}"))?;
+    let tmp = TempDir::new_in(state.tmp_dir())?;
+    println!("Installing: {candidate} {version}");
+    let normalized = match archive::extract(&archive_path, tmp.path()) {
+        Ok(path) => path,
+        Err(e) => {
+            let _ = fs::remove_file(&archive_path);
+            return Err(e).with_context(|| format!("failed to extract {candidate} {version}"));
+        }
+    };
+    let final_dir = state.version_dir(candidate, version);
+    if let Err(e) = archive::move_normalized(&normalized, &final_dir) {
+        let _ = fs::remove_file(&archive_path);
+        if final_dir.exists() {
+            let _ = fs::remove_dir_all(&final_dir);
+        }
+        return Err(e);
+    }
+    state.write_record(&InstallRecord {
+        candidate: candidate.to_string(),
+        version: version.to_string(),
+        path: final_dir,
+        local: false,
+    })?;
     Ok(())
 }
 
