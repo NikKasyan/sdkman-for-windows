@@ -217,10 +217,7 @@ pub(super) fn selfupdate(state: &State) -> Result<()> {
     crate::archive::extract(&archive_path, &extract_dir)?;
 
     let install_ps1 = extract_dir.join("install.ps1");
-    let sdk_exe_new = extract_dir
-        .join("target")
-        .join("release")
-        .join("sdk.exe");
+    let sdk_exe_new = extract_dir.join("target").join("release").join("sdk.exe");
 
     if !install_ps1.exists() {
         bail!("install.ps1 not found in release archive");
