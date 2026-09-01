@@ -13,6 +13,8 @@ if exist "%SDK_SHIMS%" (
   set "PATH=%SDK_SHIMS%;%PATH%"
 )
 
+if /I "%1"=="--init" exit /b 0
+
 if /I "%1"=="use" (
   for /f "delims=" %%L in ('"%SDK_EXE%" --emit-cmd %*') do %%L
   exit /b %ERRORLEVEL%

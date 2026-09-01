@@ -76,6 +76,23 @@ function Set-SdkmanPathEntries {
     [Environment]::SetEnvironmentVariable("Path", ($unique -join ';'), $Scope)
 }
 
+function Add-SdkmanCmdAutoRun {
+    param([string]$Command)
+
+    $key = "HKCU:\Software\Microsoft\Command Processor"
+    if (!(Test-Path -LiteralPath $key)) {
+        New-Item -Path $key -Force | Out-Null
+    }
+
+    $current = (Get-ItemProperty -LiteralPath $key -Name "AutoRun" -ErrorAction SilentlyContinue).AutoRun
+    if ($current -and $current.IndexOf($Command, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        return
+    }
+
+    $updated = if ($current) { "$Command & $current" } else { $Command }
+    New-ItemProperty -LiteralPath $key -Name "AutoRun" -Value $updated -PropertyType String -Force | Out-Null
+}
+
 function Get-ReleaseValue {
     param(
         [string]$ReleaseFile,
@@ -344,6 +361,10 @@ Copy-Item -Force "$PSScriptRoot\scripts\sdk-completion.ps1" (Join-Path $scriptDi
 Copy-Item -Force "$PSScriptRoot\scripts\sdk-auto-env.ps1" (Join-Path $scriptDir "sdk-auto-env.ps1")
 $managedEntries = @($scriptDir, $shimDir, $binDir)
 Set-SdkmanPathEntries -Scope $PathScope -ManagedEntries $managedEntries
+if ($PathScope -eq "User" -and !$SkipProfileUpdate) {
+    $cmdWrapper = Join-Path $scriptDir "sdk.cmd"
+    Add-SdkmanCmdAutoRun -Command "if exist `"$cmdWrapper`" call `"$cmdWrapper`" --init"
+}
 
 # Optionally unblock downloaded script files so they can be executed without an
 # extra user action. This is gated behind the -UnblockScripts switch or an

@@ -100,7 +100,7 @@ PowerShell users should invoke the installed `sdk.ps1` wrapper, and CMD users sh
 
 This makes `sdk` resolve to the shell wrapper before the raw `sdk.exe`, and makes generated command shims win over unrelated SDK commands later on PATH. Re-running the installer removes duplicate SDKMAN for Windows PATH entries and preserves unrelated entries.
 
-The installer also registers PowerShell tab completion in the current user's Windows PowerShell and PowerShell profile paths. Completion suggests install versions from SDKMAN metadata, respecting offline mode and cached metadata, and suggests `use` versions from currently installed versions only. Pass `-SkipProfileUpdate` to `install.ps1` if you do not want the installer to edit your PowerShell profiles.
+The installer also registers shell initialization for PowerShell and CMD. On startup, this places the SDKMAN for Windows entries before machine-level SDK paths so a new shell uses the selected defaults. PowerShell initialization and tab completion are registered in the current user's Windows PowerShell and PowerShell profile paths; CMD initialization uses the current user's `Command Processor\AutoRun` value and preserves any existing command. Completion suggests install versions from SDKMAN metadata, respecting offline mode and cached metadata, and suggests `use` versions from currently installed versions only. Pass `-SkipProfileUpdate` to `install.ps1` if you do not want the installer to add either startup hook.
 
 During installation, the installer also looks for existing Java, Maven, Gradle, and Kotlin SDKs in common environment variables and Windows install directories. Any directory that looks like an SDK home is registered as a local install, for example `java 21.0.4-tem-local`, `maven 3.9.9-local`, `gradle 8.7-local`, or `kotlin 2.0.0-local`, without copying or taking ownership of those files. Pass `-SkipLocalSdkDiscovery` to leave existing local SDKs unregistered.
 
@@ -130,7 +130,7 @@ By default the uninstaller removes these user PATH entries:
 %USERPROFILE%\.sdkman-windows\bin
 ```
 
-It also removes the PowerShell completion profile entry and deletes the installed command integration files:
+It also removes the PowerShell profile entry and CMD startup hook, then deletes the installed command integration files:
 
 ```text
 %USERPROFILE%\.sdkman-windows\scripts\sdk.ps1

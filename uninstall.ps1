@@ -38,6 +38,31 @@ function Remove-SdkmanPathEntries {
     }
 }
 
+function Remove-SdkmanCmdAutoRun {
+    param([string]$Command)
+
+    $key = "HKCU:\Software\Microsoft\Command Processor"
+    $current = (Get-ItemProperty -LiteralPath $key -Name "AutoRun" -ErrorAction SilentlyContinue).AutoRun
+    if (!$current) {
+        return
+    }
+
+    $separator = " & "
+    if ($current.Equals($Command, [StringComparison]::OrdinalIgnoreCase)) {
+        Remove-ItemProperty -LiteralPath $key -Name "AutoRun"
+    } elseif ($current.StartsWith("$Command$separator", [StringComparison]::OrdinalIgnoreCase)) {
+        Set-ItemProperty -LiteralPath $key -Name "AutoRun" -Value $current.Substring(($Command + $separator).Length)
+    } elseif ($current.EndsWith("$separator$Command", [StringComparison]::OrdinalIgnoreCase)) {
+        Set-ItemProperty -LiteralPath $key -Name "AutoRun" -Value $current.Substring(0, $current.Length - ($separator + $Command).Length)
+    } else {
+        $pattern = [regex]::Escape("$separator$Command$separator")
+        $updated = [regex]::Replace($current, $pattern, $separator, [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        if ($updated -ne $current) {
+            Set-ItemProperty -LiteralPath $key -Name "AutoRun" -Value $updated
+        }
+    }
+}
+
 $binDir = Join-Path $InstallDir "bin"
 $shimDir = Join-Path $InstallDir "shims"
 $scriptDir = Join-Path $InstallDir "scripts"
@@ -45,6 +70,10 @@ $completionScript = Join-Path $scriptDir "sdk-completion.ps1"
 
 $managedEntries = @($scriptDir, $shimDir, $binDir)
 Remove-SdkmanPathEntries -Scope $PathScope -ManagedEntries $managedEntries
+if ($PathScope -eq "User" -and !$SkipProfileUpdate) {
+    $cmdWrapper = Join-Path $scriptDir "sdk.cmd"
+    Remove-SdkmanCmdAutoRun -Command "if exist `"$cmdWrapper`" call `"$cmdWrapper`" --init"
+}
 
 if (!$SkipProfileUpdate) {
     $documents = [Environment]::GetFolderPath("MyDocuments")

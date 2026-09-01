@@ -1,3 +1,16 @@
+$_sdkmanWindowsRoot = if ($env:SDKMAN_WINDOWS_DIR) { $env:SDKMAN_WINDOWS_DIR } else { Join-Path $env:USERPROFILE ".sdkman-windows" }
+$_sdkmanWindowsPathEntries = @(
+    (Join-Path $_sdkmanWindowsRoot "scripts"),
+    (Join-Path $_sdkmanWindowsRoot "shims"),
+    (Join-Path $_sdkmanWindowsRoot "bin")
+)
+$_sdkmanWindowsPathKeys = $_sdkmanWindowsPathEntries | ForEach-Object { $_.Trim().TrimEnd('\', '/') }
+$_sdkmanWindowsExistingPathEntries = $env:PATH -split ';' | Where-Object {
+    $_ -and $_.Trim().Length -gt 0 -and $_.Trim().TrimEnd('\', '/') -notin $_sdkmanWindowsPathKeys
+}
+$env:PATH = (@($_sdkmanWindowsPathEntries) + @($_sdkmanWindowsExistingPathEntries)) -join ';'
+Remove-Variable _sdkmanWindowsRoot, _sdkmanWindowsPathEntries, _sdkmanWindowsPathKeys, _sdkmanWindowsExistingPathEntries -ErrorAction SilentlyContinue
+
 function Register-SdkmanWindowsCompletion {
     Register-ArgumentCompleter -Native -CommandName "sdk", "sdk.exe", "sdk.ps1", "sdk.cmd" -ScriptBlock {
         param($wordToComplete, $commandAst, $cursorPosition)

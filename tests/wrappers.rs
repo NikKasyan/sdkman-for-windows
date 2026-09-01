@@ -186,6 +186,50 @@ mod windows {
     }
 
     #[test]
+    fn powershell_startup_puts_default_shims_before_machine_path_commands() {
+        let root = prepare_sdk_root();
+        let sdk_home = temp_dir();
+        let system_home = temp_dir();
+        create_fake_command(sdk_home.path(), "sample", "local");
+        create_fake_command(system_home.path(), "sample", "system");
+        register_local_sdk(root.path(), "sample", "1.0-local", sdk_home.path());
+
+        let default = Command::new(cargo_bin("sdk"))
+            .env("SDKMAN_WINDOWS_DIR", root.path())
+            .args(["default", "sample", "1.0-local"])
+            .output()
+            .unwrap();
+        assert!(default.status.success());
+
+        let startup = repo_path("scripts/sdk-completion.ps1");
+        let command = format!(". {}; sample hello world", ps_quote(&startup));
+        let output = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                &command,
+            ])
+            .env("SDKMAN_WINDOWS_DIR", root.path())
+            .env("PATH", system_home.path().join("bin"))
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("local:hello:world"),
+            "stdout:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+
+    #[test]
     fn cmd_wrapper_default_puts_shims_before_existing_path_commands() {
         let root = prepare_sdk_root();
         let sdk_home = temp_dir();
@@ -198,6 +242,44 @@ mod windows {
         let command = format!("call {script} default sample 1.0-local && sample hello world");
         let output = Command::new("cmd")
             .args(["/C", &command])
+            .env("SDKMAN_WINDOWS_DIR", root.path())
+            .env("PATH", system_home.path().join("bin"))
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("local:hello:world"),
+            "stdout:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+
+    #[test]
+    fn cmd_startup_puts_default_shims_before_machine_path_commands() {
+        let root = prepare_sdk_root();
+        let sdk_home = temp_dir();
+        let system_home = temp_dir();
+        create_fake_command(sdk_home.path(), "sample", "local");
+        create_fake_command(system_home.path(), "sample", "system");
+        register_local_sdk(root.path(), "sample", "1.0-local", sdk_home.path());
+
+        let default = Command::new(cargo_bin("sdk"))
+            .env("SDKMAN_WINDOWS_DIR", root.path())
+            .args(["default", "sample", "1.0-local"])
+            .output()
+            .unwrap();
+        assert!(default.status.success());
+
+        let script = repo_path("scripts/sdk.cmd");
+        let command = format!("call {script} --init && sample hello world");
+        let output = Command::new("cmd")
+            .args(["/D", "/C", &command])
             .env("SDKMAN_WINDOWS_DIR", root.path())
             .env("PATH", system_home.path().join("bin"))
             .output()
