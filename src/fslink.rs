@@ -59,11 +59,7 @@ fn create_dir_link(link: &Path, target: &Path) -> Result<()> {
     if symlink_dir(target, link).is_ok() {
         return Ok(());
     }
-    let output = Command::new("cmd")
-        .args(["/C", "mklink", "/J"])
-        .arg(link)
-        .arg(target)
-        .output()?;
+    let output = junction_command(link, target).output()?;
     if output.status.success() {
         Ok(())
     } else {
@@ -82,6 +78,16 @@ fn create_dir_link(link: &Path, target: &Path) -> Result<()> {
         }
         anyhow::bail!(message)
     }
+}
+
+#[cfg(windows)]
+fn junction_command(link: &Path, target: &Path) -> Command {
+    let mut command = Command::new("cmd");
+    command
+        .args(["/D", "/C", "mklink", "/J"])
+        .arg(link)
+        .arg(target);
+    command
 }
 
 #[cfg(not(windows))]
@@ -126,5 +132,17 @@ mod tests {
         remove_linkish(&file).unwrap();
 
         assert!(!file.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn junction_command_disables_cmd_autorun() {
+        let command = junction_command(Path::new("current"), Path::new("target"));
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert_eq!(args, ["/D", "/C", "mklink", "/J", "current", "target"]);
     }
 }
