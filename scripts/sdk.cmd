@@ -1,4 +1,6 @@
 @echo off
+if /I "%1"=="--init" if defined SDKMAN_WINDOWS_INITIALIZING exit /b 0
+
 if "%SDKMAN_WINDOWS_DIR%"=="" (
   set "SDKMAN_WINDOWS_DIR=%USERPROFILE%\.sdkman-windows"
 )
@@ -14,7 +16,9 @@ if exist "%SDK_SHIMS%" (
 )
 
 if /I "%1"=="--init" (
+  set "SDKMAN_WINDOWS_INITIALIZING=1"
   for /f "delims=" %%L in ('"%SDK_EXE%" --emit-cmd init') do %%L
+  set "SDKMAN_WINDOWS_INITIALIZING="
   exit /b %ERRORLEVEL%
 )
 

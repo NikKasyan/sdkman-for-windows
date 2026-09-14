@@ -146,7 +146,7 @@ mod tests {
         write_cmd_shim(temp.path(), "sample", &target).unwrap();
 
         let output = Command::new("cmd")
-            .args(["/C", shim.to_str().unwrap(), "hello world", "plain"])
+            .args(["/D", "/C", shim.to_str().unwrap(), "hello world", "plain"])
             .output()
             .unwrap();
 

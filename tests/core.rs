@@ -328,7 +328,7 @@ fn local_install_default_shim_and_uninstall_workflow() {
     assert!(shim.exists());
 
     let shim_output = ProcessCommand::new("cmd")
-        .args(["/C", shim.to_str().unwrap(), "hello", "world"])
+        .args(["/D", "/C", shim.to_str().unwrap(), "hello", "world"])
         .output()
         .unwrap();
     assert!(
@@ -674,7 +674,7 @@ fn default_regenerates_shims_idempotently_and_removes_stale_shims() {
         .success();
 
     let shim_output = ProcessCommand::new("cmd")
-        .args(["/C", shim.to_str().unwrap(), "hello", "world"])
+        .args(["/D", "/C", shim.to_str().unwrap(), "hello", "world"])
         .output()
         .unwrap();
     assert!(

@@ -115,7 +115,7 @@ mod windows {
         let script = repo_path("scripts/sdk.cmd");
 
         let init = Command::new("cmd")
-            .args(["/C", &script, "env", "init"])
+            .args(["/D", "/C", &script, "env", "init"])
             .env("SDKMAN_WINDOWS_DIR", root.path())
             .current_dir(work.path())
             .output()
@@ -130,7 +130,7 @@ mod windows {
         assert!(work.path().join(".sdkmanrc").exists());
 
         let clear = Command::new("cmd")
-            .args(["/C", &script, "env", "clear"])
+            .args(["/D", "/C", &script, "env", "clear"])
             .env("SDKMAN_WINDOWS_DIR", root.path())
             .current_dir(work.path())
             .output()
@@ -195,6 +195,27 @@ mod windows {
             "stdout:\n{}",
             String::from_utf8_lossy(&output.stdout)
         );
+    }
+
+    #[test]
+    fn cmd_startup_guard_prevents_recursive_initialization() {
+        let missing_root = temp_dir();
+        let script = repo_path("scripts/sdk.cmd");
+
+        let output = Command::new("cmd")
+            .args(["/D", "/C", &script, "--init"])
+            .env("SDKMAN_WINDOWS_DIR", missing_root.path())
+            .env("SDKMAN_WINDOWS_INITIALIZING", "1")
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!String::from_utf8_lossy(&output.stdout).contains("sdk.exe not found"));
     }
 
     #[test]
@@ -270,7 +291,7 @@ mod windows {
             "set SAMPLE_HOME=stale&& call {script} default sample 1.0-local && sample hello world && echo HOME_MARKER=!SAMPLE_HOME!"
         );
         let output = Command::new("cmd")
-            .args(["/V:ON", "/C", &command])
+            .args(["/D", "/V:ON", "/C", &command])
             .env("SDKMAN_WINDOWS_DIR", root.path())
             .env("PATH", system_home.path().join("bin"))
             .output()
