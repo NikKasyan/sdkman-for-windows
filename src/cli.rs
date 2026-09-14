@@ -6,7 +6,7 @@ use std::path::PathBuf;
     name = "sdk",
     version,
     about = "SDKMAN for native Windows",
-    long_about = "SDKMAN for native Windows\n\nManage SDKMAN-style candidates on Windows. The Rust CLI owns durable state, installs, defaults, and generated shims. The PowerShell and CMD wrappers add shell-local environment updates for commands such as `sdk use` and `sdk env install`.",
+    long_about = "SDKMAN for native Windows\n\nManage SDKMAN-style candidates on Windows. The Rust CLI owns durable state, installs, defaults, and generated shims. The PowerShell and CMD wrappers add shell-local environment updates for commands such as `sdk use`, `sdk default`, and `sdk env install`.",
     after_help = COMMAND_GUIDE,
     subcommand_required = false
 )]
@@ -92,7 +92,7 @@ pub enum Command {
     #[command(
         alias = "d",
         about = "Set the default version for a candidate",
-        long_about = "Set the default version for a candidate.\n\nThis points the candidate's current link at the selected SDK and regenerates command shims. New shells, and shells where the wrapper has placed the shim directory first on PATH, will resolve commands such as java or mvn through this default.",
+        long_about = "Set the default version for a candidate.\n\nThis points the candidate's current link at the selected SDK, regenerates command shims, and updates that candidate's HOME variables through the shell wrapper. New shells restore those HOME variables and resolve commands such as java or mvn through this default.",
         after_help = "Examples:\n  sdk default java 21.0.4-tem\n  sdk d maven 3.9.9"
     )]
     Default {

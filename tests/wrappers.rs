@@ -156,7 +156,7 @@ mod windows {
 
         let script = repo_path("scripts/sdk.ps1");
         let command = format!(
-            "& '{}' default sample 1.0-local; sample hello world",
+            "$env:SAMPLE_HOME = 'stale'; & '{}' default sample 1.0-local; sample hello world; 'HOME_MARKER=' + $env:SAMPLE_HOME",
             script.replace('\'', "''")
         );
         let output = Command::new("powershell")
@@ -183,6 +183,18 @@ mod windows {
             "stdout:\n{}",
             String::from_utf8_lossy(&output.stdout)
         );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains(&format!(
+                "HOME_MARKER={}",
+                root.path()
+                    .join("candidates")
+                    .join("sample")
+                    .join("current")
+                    .display()
+            )),
+            "stdout:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
     }
 
     #[test]
@@ -202,7 +214,10 @@ mod windows {
         assert!(default.status.success());
 
         let startup = repo_path("scripts/sdk-completion.ps1");
-        let command = format!(". {}; sample hello world", ps_quote(&startup));
+        let command = format!(
+            "$env:SAMPLE_HOME = 'stale'; . {}; sample hello world; 'HOME_MARKER=' + $env:SAMPLE_HOME",
+            ps_quote(&startup)
+        );
         let output = Command::new("powershell")
             .args([
                 "-NoProfile",
@@ -227,6 +242,18 @@ mod windows {
             "stdout:\n{}",
             String::from_utf8_lossy(&output.stdout)
         );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains(&format!(
+                "HOME_MARKER={}",
+                root.path()
+                    .join("candidates")
+                    .join("sample")
+                    .join("current")
+                    .display()
+            )),
+            "stdout:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
     }
 
     #[test]
@@ -239,9 +266,11 @@ mod windows {
         register_local_sdk(root.path(), "sample", "1.0-local", sdk_home.path());
 
         let script = repo_path("scripts/sdk.cmd");
-        let command = format!("call {script} default sample 1.0-local && sample hello world");
+        let command = format!(
+            "set SAMPLE_HOME=stale&& call {script} default sample 1.0-local && sample hello world && echo HOME_MARKER=!SAMPLE_HOME!"
+        );
         let output = Command::new("cmd")
-            .args(["/C", &command])
+            .args(["/V:ON", "/C", &command])
             .env("SDKMAN_WINDOWS_DIR", root.path())
             .env("PATH", system_home.path().join("bin"))
             .output()
@@ -255,6 +284,18 @@ mod windows {
         );
         assert!(
             String::from_utf8_lossy(&output.stdout).contains("local:hello:world"),
+            "stdout:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains(&format!(
+                "HOME_MARKER={}",
+                root.path()
+                    .join("candidates")
+                    .join("sample")
+                    .join("current")
+                    .display()
+            )),
             "stdout:\n{}",
             String::from_utf8_lossy(&output.stdout)
         );
@@ -277,9 +318,11 @@ mod windows {
         assert!(default.status.success());
 
         let script = repo_path("scripts/sdk.cmd");
-        let command = format!("call {script} --init && sample hello world");
+        let command = format!(
+            "set SAMPLE_HOME=stale&& call {script} --init && sample hello world && echo HOME_MARKER=!SAMPLE_HOME!"
+        );
         let output = Command::new("cmd")
-            .args(["/D", "/C", &command])
+            .args(["/D", "/V:ON", "/C", &command])
             .env("SDKMAN_WINDOWS_DIR", root.path())
             .env("PATH", system_home.path().join("bin"))
             .output()
@@ -293,6 +336,18 @@ mod windows {
         );
         assert!(
             String::from_utf8_lossy(&output.stdout).contains("local:hello:world"),
+            "stdout:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains(&format!(
+                "HOME_MARKER={}",
+                root.path()
+                    .join("candidates")
+                    .join("sample")
+                    .join("current")
+                    .display()
+            )),
             "stdout:\n{}",
             String::from_utf8_lossy(&output.stdout)
         );

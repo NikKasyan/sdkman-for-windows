@@ -14,6 +14,8 @@ use crate::{
     state::{InstallRecord, State},
 };
 
+use super::EmitMode;
+
 pub(super) fn install(
     state: &State,
     candidate: &str,
@@ -48,7 +50,7 @@ pub(super) fn install(
     }
 
     if should_set_default(&state.config)? {
-        default_version(state, candidate, Some(version))?;
+        default_version(state, candidate, Some(version), EmitMode::None)?;
     }
     Ok(())
 }
@@ -83,6 +85,7 @@ pub(super) fn default_version(
     state: &State,
     candidate: &str,
     version: Option<String>,
+    emit: EmitMode,
 ) -> Result<()> {
     state.init()?;
     super::ensure_candidate_exists(state, candidate)?;
@@ -92,7 +95,11 @@ pub(super) fn default_version(
         .context("version is not installed")?;
     fslink::replace_dir_link(&state.current_link(candidate), &record.path)?;
     shims::regenerate(state)?;
-    println!("Default {candidate} version set to {version}.");
+    if emit == EmitMode::None {
+        println!("Default {candidate} version set to {version}.");
+    } else {
+        super::env::default_changed(state, candidate, &version, emit)?;
+    }
     Ok(())
 }
 

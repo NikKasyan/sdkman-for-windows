@@ -23,6 +23,7 @@ pub fn execute(args: Args, state: State) -> Result<()> {
         return Ok(());
     };
     match command {
+        Command::Init if emit != EmitMode::None => env::initialize_shell(&state, emit),
         Command::Init => simple::init(&state),
         Command::List { candidate, order } => list::list(&state, candidate, order),
         Command::Install {
@@ -35,7 +36,7 @@ pub fn execute(args: Args, state: State) -> Result<()> {
         }
         Command::Use { candidate, version } => env::use_version(&state, &candidate, version, emit),
         Command::Default { candidate, version } => {
-            install::default_version(&state, &candidate, version)
+            install::default_version(&state, &candidate, version, emit)
         }
         Command::Current { candidate } => simple::current(&state, candidate),
         Command::Home { candidate, version } => simple::home(&state, &candidate, version),

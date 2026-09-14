@@ -61,6 +61,43 @@ pub(super) fn use_version(
     Ok(())
 }
 
+pub(super) fn initialize_shell(state: &State, emit: EmitMode) -> Result<()> {
+    state.init()?;
+    let mut set = BTreeMap::new();
+    for candidate in state.installed_candidates()? {
+        let current = state.current_link(&candidate);
+        if current.exists() {
+            add_home_variables(&mut set, &candidate, &current);
+        }
+    }
+    emit_update(
+        emit,
+        &EnvUpdate {
+            set,
+            prepend_path: Vec::new(),
+            message: String::new(),
+        },
+    )
+}
+
+pub(super) fn default_changed(
+    state: &State,
+    candidate: &str,
+    version: &str,
+    emit: EmitMode,
+) -> Result<()> {
+    let mut set = BTreeMap::new();
+    add_home_variables(&mut set, candidate, &state.current_link(candidate));
+    emit_update(
+        emit,
+        &EnvUpdate {
+            set,
+            prepend_path: Vec::new(),
+            message: format!("Default {candidate} version set to {version}."),
+        },
+    )
+}
+
 pub(super) fn env_cmd(state: &State, action: EnvAction, emit: EmitMode) -> Result<()> {
     state.init()?;
     let rc = env::current_dir()?.join(".sdkmanrc");
@@ -135,4 +172,13 @@ fn emit_update(mode: EmitMode, update: &EnvUpdate) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn add_home_variables(set: &mut BTreeMap<String, String>, candidate: &str, home: &std::path::Path) {
+    let home = home.display().to_string();
+    set.insert(session_home_var(candidate), home.clone());
+    set.insert(
+        format!("{}_HOME", candidate.to_ascii_uppercase().replace('-', "_")),
+        home,
+    );
 }

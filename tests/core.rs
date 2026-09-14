@@ -427,6 +427,83 @@ fn sdkmanrc_env_install_emits_powershell_json_and_cmd_commands() {
 
 #[cfg(windows)]
 #[test]
+fn default_emits_home_variables_for_the_current_link() {
+    let sdkman_home = TempDir::new().unwrap();
+    let sdk_home = create_fake_sdk("java");
+    register_local_sdk(sdkman_home.path(), "java", "25-local", sdk_home.path());
+
+    let output = Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .args(["--emit-env", "default", "java", "25-local"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let text = String::from_utf8_lossy(&output);
+    let json = text
+        .lines()
+        .find_map(|line| line.strip_prefix("__SDKMAN_ENV_JSON__"))
+        .unwrap();
+    let update: serde_json::Value = serde_json::from_str(json).unwrap();
+    let current = sdkman_home
+        .path()
+        .join("candidates")
+        .join("java")
+        .join("current")
+        .display()
+        .to_string();
+
+    assert_eq!(update["set"]["JAVA_HOME"], current);
+    assert_eq!(update["set"]["SDKMAN_JAVA_HOME"], current);
+    assert!(update["prepend_path"].as_array().unwrap().is_empty());
+    assert_eq!(update["message"], "Default java version set to 25-local.");
+}
+
+#[cfg(windows)]
+#[test]
+fn shell_init_emits_home_variables_for_defaults() {
+    let sdkman_home = TempDir::new().unwrap();
+    let sdk_home = create_fake_sdk("java");
+    register_local_sdk(sdkman_home.path(), "java", "25-local", sdk_home.path());
+    Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .args(["default", "java", "25-local"])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("sdk")
+        .unwrap()
+        .env("SDKMAN_WINDOWS_DIR", sdkman_home.path())
+        .args(["--emit-env", "init"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let text = String::from_utf8_lossy(&output);
+    let json = text
+        .lines()
+        .find_map(|line| line.strip_prefix("__SDKMAN_ENV_JSON__"))
+        .unwrap();
+    let update: serde_json::Value = serde_json::from_str(json).unwrap();
+    let current = sdkman_home
+        .path()
+        .join("candidates")
+        .join("java")
+        .join("current")
+        .display()
+        .to_string();
+
+    assert_eq!(update["set"]["JAVA_HOME"], current);
+    assert_eq!(update["set"]["SDKMAN_JAVA_HOME"], current);
+    assert!(update["message"].as_str().unwrap().is_empty());
+}
+
+#[cfg(windows)]
+#[test]
 fn sdkmanrc_env_install_fails_when_version_is_missing() {
     let sdkman_home = TempDir::new().unwrap();
     let work = TempDir::new().unwrap();

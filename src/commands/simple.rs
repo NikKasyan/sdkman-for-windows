@@ -139,7 +139,7 @@ pub(super) fn upgrade(state: &State, candidate: Option<String>) -> Result<()> {
         if state.install_record(&candidate, &latest)?.is_none() {
             super::install::download_and_register(state, &candidate, &latest)?;
         }
-        super::install::default_version(state, &candidate, Some(latest))?;
+        super::install::default_version(state, &candidate, Some(latest), super::EmitMode::None)?;
     }
     Ok(())
 }

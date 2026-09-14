@@ -50,6 +50,7 @@ if (Test-Path $shimDir) {
 if (
     $SdkArgs.Count -gt 0 -and (
         $SdkArgs[0] -eq "use" -or
+        $SdkArgs[0] -eq "default" -or
         ($SdkArgs[0] -eq "env" -and $SdkArgs.Count -gt 1 -and $SdkArgs[1] -eq "install")
     )
 ) {
@@ -80,7 +81,6 @@ if (
 if (
     $SdkArgs.Count -gt 0 -and (
         $SdkArgs[0] -eq "install" -or
-        $SdkArgs[0] -eq "default" -or
         $SdkArgs[0] -eq "uninstall" -or
         $SdkArgs[0] -eq "rm"
     )
